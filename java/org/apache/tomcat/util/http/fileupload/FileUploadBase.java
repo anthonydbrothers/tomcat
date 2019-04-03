@@ -311,8 +311,8 @@ public abstract class FileUploadBase {
                 for (FileItem fileItem : items) {
                     try {
                         fileItem.delete();
-                    } catch (Exception e) {
-                        // ignore it
+                    } catch (Exception ignored) {
+                        // ignored TODO perhaps add to tracker delete failure list somehow?
                     }
                 }
             }
@@ -585,11 +585,6 @@ public abstract class FileUploadBase {
             private final InputStream stream;
 
             /**
-             * Whether the file item was already opened.
-             */
-            private boolean opened;
-
-            /**
              * The headers, if any.
              */
             private FileItemHeaders headers;
@@ -611,20 +606,23 @@ public abstract class FileUploadBase {
                 fieldName = pFieldName;
                 contentType = pContentType;
                 formField = pFormField;
-                final ItemInputStream itemStream = multi.newInputStream();
-                InputStream istream = itemStream;
-                if (fileSizeMax != -1) {
+                if (fileSizeMax != -1) { // Check if limit is already exceeded
                     if (pContentLength != -1
-                            &&  pContentLength > fileSizeMax) {
+                            && pContentLength > fileSizeMax) {
                         FileSizeLimitExceededException e =
-                            new FileSizeLimitExceededException(
-                                String.format("The field %s exceeds its maximum permitted size of %s bytes.",
-                                        fieldName, Long.valueOf(fileSizeMax)),
-                                pContentLength, fileSizeMax);
+                                new FileSizeLimitExceededException(
+                                        String.format("The field %s exceeds its maximum permitted size of %s bytes.",
+                                                       fieldName, Long.valueOf(fileSizeMax)),
+                                        pContentLength, fileSizeMax);
                         e.setFileName(pName);
                         e.setFieldName(pFieldName);
                         throw new FileUploadIOException(e);
                     }
+                }
+                // OK to construct stream now
+                final ItemInputStream itemStream = multi.newInputStream();
+                InputStream istream = itemStream;
+                if (fileSizeMax != -1) {
                     istream = new LimitedInputStream(istream, fileSizeMax) {
                         @Override
                         protected void raiseError(long pSizeMax, long pCount)
@@ -698,10 +696,6 @@ public abstract class FileUploadBase {
              */
             @Override
             public InputStream openStream() throws IOException {
-                if (opened) {
-                    throw new IllegalStateException(
-                            "The stream was already opened.");
-                }
                 if (((Closeable) stream).isClosed()) {
                     throw new FileItemStream.ItemSkippedException();
                 }

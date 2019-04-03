@@ -69,11 +69,8 @@ public class CharsetMapper {
      *  resource could not be loaded for any reason.
      */
     public CharsetMapper(String name) {
-        try {
-            InputStream stream =
-              this.getClass().getResourceAsStream(name);
+        try (InputStream stream = this.getClass().getResourceAsStream(name)) {
             map.load(stream);
-            stream.close();
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
             throw new IllegalArgumentException(t.toString());
@@ -100,6 +97,7 @@ public class CharsetMapper {
      * content type header.
      *
      * @param locale The locale for which to calculate a character set
+     * @return the charset name
      */
     public String getCharset(Locale locale) {
         // Match full language_country_variant first, then language_country,
@@ -112,7 +110,7 @@ public class CharsetMapper {
                 charset = map.getProperty(locale.getLanguage());
             }
         }
-        return (charset);
+        return charset;
     }
 
 

@@ -24,20 +24,14 @@ import java.net.StandardSocketOptions;
 import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 
+import javax.management.ObjectName;
+
 /**
  * Properties that can be set in the &lt;Connector&gt; element
  * in server.xml. All properties are prefixed with &quot;socket.&quot;
  * and are currently only working for the Nio connector
  */
 public class SocketProperties {
-    /**
-     * Enable/disable socket wrapper cache, this bounded cache stores
-     * SocketWrapper objects to reduce GC
-     * Default is 500
-     * -1 is unlimited
-     * 0 is disabled
-     */
-    protected int socketWrapperCache = 500;
 
     /**
      * Enable/disable socket processor cache, this bounded cache stores
@@ -54,19 +48,19 @@ public class SocketProperties {
      * Default is 500
      * -1 is unlimited
      * 0 is disabled
-     * >0 the max number of objects to keep in cache.
+     * &gt;0 the max number of objects to keep in cache.
      */
     protected int eventCache = 500;
 
     /**
      * Enable/disable direct buffers for the network buffers
-     * Default value is enabled
+     * Default value is disabled
      */
     protected boolean directBuffer = false;
 
     /**
      * Enable/disable direct buffers for the network buffers for SSL
-     * Default value is enabled
+     * Default value is disabled
      */
     protected boolean directSslBuffer = false;
 
@@ -144,7 +138,7 @@ public class SocketProperties {
     /**
      * SO_TIMEOUT option. default is 20000.
      */
-    protected Integer soTimeout = new Integer(20000);
+    protected Integer soTimeout = Integer.valueOf(20000);
 
     /**
      * Performance preferences according to
@@ -180,6 +174,9 @@ public class SocketProperties {
      * Timeout in milliseconds for an unlock to take place.
      */
     protected int unlockTimeout = 250;
+
+    private ObjectName oname = null;
+
 
     public void setProperties(Socket socket) throws SocketException{
         if (rxBufSize != null)
@@ -312,14 +309,6 @@ public class SocketProperties {
         return eventCache;
     }
 
-    public int getKeyCache() {
-        return socketWrapperCache;
-    }
-
-    public int getSocketWrapperCache() {
-        return socketWrapperCache;
-    }
-
     public int getAppReadBufSize() {
         return appReadBufSize;
     }
@@ -409,14 +398,6 @@ public class SocketProperties {
         this.eventCache = eventCache;
     }
 
-    public void setSocketWrapperCache(int socketWrapperCache) {
-        this.socketWrapperCache = socketWrapperCache;
-    }
-
-    public void setKeyCache(int keyCache) {
-        this.socketWrapperCache = keyCache;
-    }
-
     public void setAppReadBufSize(int appReadBufSize) {
         this.appReadBufSize = appReadBufSize;
     }
@@ -445,5 +426,11 @@ public class SocketProperties {
         this.unlockTimeout = unlockTimeout;
     }
 
+    void setObjectName(ObjectName oname) {
+        this.oname = oname;
+    }
 
+    ObjectName getObjectName() {
+        return oname;
+    }
 }

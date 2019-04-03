@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
  Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -23,6 +23,7 @@
   <!-- Anything in J2SE is OK but need to list javax by package as not
        all javax packages are in J2SE -->
   <allow pkg="java"/>
+  <allow pkg="javax.crypto"/>
   <allow class="javax.imageio.ImageIO"/>
   <allow pkg="javax.management"/>
   <allow pkg="javax.naming"/>
@@ -75,19 +76,25 @@
       <disallow pkg="javax.ejb"/>
       <disallow pkg="javax.persistence"/>
       <disallow pkg="javax.servlet"/>
-      <disallow pkg="org.apache.catalina"/>
+      <disallow pkg="org\.apache\.catalina(?!\.tribes).*" regex="true"/>
       <disallow pkg="org.apache.coyote"/>
       <disallow pkg="org.apache.naming"/>
-      <disallow pkg="org.apache.tomcat"/>
+      <disallow pkg="org\.apache\.tomcat(?!\.util\.json).*" regex="true"/>
       <allow pkg="org.apache.catalina.tribes"/>
+      <subpackage name="membership">
+        <subpackage name="cloud">
+          <allow class="org.apache.tomcat.util.net.jsse.PEMFile"/>
+          <allow class="org.apache.tomcat.util.json.JSONParser"/>
+        </subpackage>
+      </subpackage>
     </subpackage>
   </subpackage>
   <subpackage name="coyote">
     <allow pkg="javax.servlet"/>
     <allow pkg="org.apache.coyote"/>
     <allow pkg="org.apache.juli"/>
+    <allow pkg="org.apache.tomcat"/>
     <allow pkg="org.apache.tomcat.jni"/>
-    <allow pkg="org.apache.tomcat.spdy"/>
     <allow pkg="org.apache.tomcat.util"/>
   </subpackage>
   <subpackage name="el">
@@ -112,6 +119,7 @@
   <subpackage name="naming">
     <allow pkg="javax.mail"/>
     <allow pkg="javax.wsdl"/>
+    <allow pkg="org.apache.juli"/>
     <allow pkg="org.apache.naming"/>
     <allow class="org.apache.tomcat.util.buf.UDecoder"/>
     <allow class="org.apache.tomcat.util.buf.UEncoder"/>
@@ -124,12 +132,16 @@
     <allow pkg="javax.servlet"/>
     <subpackage name="buildutil">
       <allow pkg="org.apache.tools.ant"/>
+      <allow pkg="org.apache.tomcat.util"/>
     </subpackage>
     <subpackage name="dbcp">
       <allow pkg="org.apache.juli"/>
       <subpackage name="dbcp2">
         <allow pkg="org.apache.tomcat.dbcp.dbcp2"/>
         <allow pkg="org.apache.tomcat.dbcp.pool2"/>
+        <subpackage name="managed">
+          <allow pkg="javax.transaction"/>
+        </subpackage>
       </subpackage>
       <subpackage name="pool2">
         <subpackage name="impl">
@@ -141,10 +153,6 @@
       <subpackage name="socket">
         <allow pkg="org.apache.tomcat.jni"/>
       </subpackage>
-    </subpackage>
-    <subpackage name="spdy">
-      <allow pkg="org.apache.tomcat.jni"/>
-      <allow pkg="org.apache.tomcat.spdy"/>
     </subpackage>
     <subpackage name="util">
       <allow pkg="org.apache.juli"/>
@@ -162,6 +170,7 @@
     <subpackage name="websocket">
       <allow pkg="javax.websocket"/>
       <allow pkg="org.apache.juli"/>
+      <allow pkg="org.apache.tomcat"/>
       <allow pkg="org.apache.tomcat.util"/>
       <!-- Ideally want to remove this -->
       <allow pkg="org.apache.tomcat.websocket.pojo"/>
@@ -171,6 +180,7 @@
       </subpackage>
       <subpackage name="server">
         <allow pkg="javax.servlet"/>
+        <allow pkg="org.apache.coyote.http11.upgrade"/>
         <allow pkg="org.apache.tomcat.websocket"/>
       </subpackage>
     </subpackage>

@@ -88,6 +88,7 @@ public class TestStatementCache extends DefaultTestCase {
         ps3.close();
         Assert.assertTrue(ps3.isClosed());
         Assert.assertEquals(1,interceptor.getCacheSize().get());
+        con.close();
     }
 
     @Test
@@ -108,6 +109,7 @@ public class TestStatementCache extends DefaultTestCase {
         ps3.close();
         Assert.assertTrue(ps3.isClosed());
         Assert.assertEquals(0,interceptor.getCacheSize().get());
+        con.close();
     }
 
     @Test
@@ -166,7 +168,6 @@ public class TestStatementCache extends DefaultTestCase {
         Connection con1 = datasource.getConnection();
         Connection con2 = datasource.getConnection();
         for (int i=0; i<120; i++) {
-            @SuppressWarnings("resource") // Connections are closed below
             Connection con = (i%2==0)?con1:con2;
             PreparedStatement ps = con.prepareStatement("select "+i);
             ps.close();

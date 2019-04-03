@@ -25,8 +25,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import static org.junit.Assert.fail;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -40,16 +39,15 @@ public class TestWebappClassLoaderMemoryLeak extends TomcatBaseTest {
     public void testTimerThreadLeak() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         if (ctx instanceof StandardContext) {
             ((StandardContext) ctx).setClearReferencesStopTimerThreads(true);
         }
 
         Tomcat.addServlet(ctx, "taskServlet", new TaskServlet());
-        ctx.addServletMapping("/", "taskServlet");
+        ctx.addServletMappingDecoded("/", "taskServlet");
 
         tomcat.start();
 
@@ -63,13 +61,9 @@ public class TestWebappClassLoaderMemoryLeak extends TomcatBaseTest {
         for (Thread thread : threads) {
             if (thread != null && thread.isAlive() &&
                     TaskServlet.TIMER_THREAD_NAME.equals(thread.getName())) {
-                int count = 0;
-                while (count < 50 && thread.isAlive()) {
-                    Thread.sleep(100);
-                    count++;
-                }
+                thread.join(5000);
                 if (thread.isAlive()) {
-                    fail("Timer thread still running");
+                    Assert.fail("Timer thread still running");
                 }
             }
         }
@@ -77,7 +71,7 @@ public class TestWebappClassLoaderMemoryLeak extends TomcatBaseTest {
 
     /*
      * Get the set of current threads as an array.
-     * Copied from WebappClassLoader
+     * Copied from WebappClassLoaderBase
      */
     private Thread[] getThreads() {
         // Get the current thread group

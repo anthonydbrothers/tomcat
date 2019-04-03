@@ -25,16 +25,18 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * This class is loaded by the {@link WebappClassLoader} to enable it to
+ * This class is loaded by {@link WebappClassLoaderBase} to enable it to
  * deregister JDBC drivers forgotten by the web application. There are some
- * classloading hacks involved - see {@link WebappClassLoader#clearReferences()}
- * for details - but the short version is do not just create a new instance of
- * this class with the new keyword.
+ * classloading hacks involved - see
+ * {@link WebappClassLoaderBase#clearReferences()} for details - but the short
+ * version is do not just create a new instance of this class with the new
+ * keyword.
  *
- * Since this class is loaded by {@link WebappClassLoader}, it can not refer to
- * any internal Tomcat classes as that will cause the security manager to
+ * Since this class is loaded by {@link WebappClassLoaderBase}, it cannot refer
+ * to any internal Tomcat classes as that will cause the security manager to
  * complain.
  */
 public class JdbcLeakPrevention {
@@ -51,7 +53,7 @@ public class JdbcLeakPrevention {
          * ensuring that both original drivers and any loaded as a result of the
          * side-effects are all de-registered.
          */
-        HashSet<Driver> originalDrivers = new HashSet<>();
+        Set<Driver> originalDrivers = new HashSet<>();
         Enumeration<Driver> drivers = DriverManager.getDrivers();
         while (drivers.hasMoreElements()) {
             originalDrivers.add(drivers.nextElement());

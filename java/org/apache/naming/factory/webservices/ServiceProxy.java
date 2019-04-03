@@ -27,12 +27,16 @@ import javax.xml.namespace.QName;
 import javax.xml.rpc.Service;
 import javax.xml.rpc.ServiceException;
 
+import org.apache.naming.StringManager;
+
 /**
  * Object proxy for Web Services.
  *
  * @author Fabien Carrion
  */
 public class ServiceProxy implements InvocationHandler {
+
+    private static final StringManager sm = StringManager.getManager(ServiceProxy.class);
 
     /**
      * Service object.
@@ -113,7 +117,7 @@ public class ServiceProxy implements InvocationHandler {
         }
 
         // no ports have been found
-        throw new ServiceException("Port-component-ref : " + name + " not found");
+        throw new ServiceException(sm.getString("serviceProxy.portNotFound", name));
     }
 
     /**

@@ -20,9 +20,7 @@ import java.io.IOException;
 
 import javax.servlet.ServletException;
 
-import org.apache.catalina.Container;
-import org.apache.catalina.Engine;
-import org.apache.catalina.Host;
+import org.apache.catalina.Cluster;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Session;
@@ -34,6 +32,8 @@ import org.apache.catalina.ha.ClusterValve;
 import org.apache.catalina.session.ManagerBase;
 import org.apache.catalina.session.PersistentManager;
 import org.apache.catalina.valves.ValveBase;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -50,9 +50,7 @@ import org.apache.tomcat.util.res.StringManager;
  * restarted!
  *
  * <p>
- * Add this Valve to your host definition at conf/server.xml .
- *
- * Since 5.5.10 as direct cluster valve:<br/>
+ * Add this Valve to your cluster definition at conf/server.xml .
  *
  * <pre>
  *  &lt;Cluster&gt;
@@ -60,16 +58,7 @@ import org.apache.tomcat.util.res.StringManager;
  *  &lt;/Cluster&gt;
  * </pre>
  *
- * <br />
- * Before 5.5.10 as Host element:<br/>
- *
- * <pre>
- *  &lt;Host&gt;
- *  &lt;Valve className=&quot;org.apache.catalina.ha.session.JvmRouteBinderValve&quot; /&gt;
- *  &lt;/Host&gt;
- * </pre>
- *
- * <em>A Trick:</em><br/>
+ * <em>A Trick:</em><br>
  * You can enable this mod_jk turnover mode via JMX before you drop a node to
  * all backup nodes! Set enable true on all JvmRouteBinderValve backups, disable
  * worker at mod_jk and then drop node and restart it! Then enable mod_jk worker
@@ -81,8 +70,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class JvmRouteBinderValve extends ValveBase implements ClusterValve {
 
     /*--Static Variables----------------------------------------*/
-    public static final org.apache.juli.logging.Log log = org.apache.juli.logging.LogFactory
-            .getLog(JvmRouteBinderValve.class);
+    public static final Log log = LogFactory.getLog(JvmRouteBinderValve.class);
 
     //------------------------------------------------------ Constructor
     public JvmRouteBinderValve() {
@@ -99,7 +87,7 @@ public class JvmRouteBinderValve extends ValveBase implements ClusterValve {
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm = StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(JvmRouteBinderValve.class);
 
     /**
      * enabled this component
@@ -107,7 +95,7 @@ public class JvmRouteBinderValve extends ValveBase implements ClusterValve {
     protected boolean enabled = true;
 
     /**
-     * number of session that no at this tomcat instanz hosted
+     * number of session that no at this tomcat instance hosted
      */
     protected long numberOfSessions = 0;
 
@@ -235,7 +223,7 @@ public class JvmRouteBinderValve extends ValveBase implements ClusterValve {
     }
 
     /**
-     * get Cluster DeltaManager
+     * get ClusterManager
      *
      * @param request current request
      * @return manager or null
@@ -283,7 +271,7 @@ public class JvmRouteBinderValve extends ValveBase implements ClusterValve {
             Request request, String sessionId, String localJvmRoute) {
         // get requested jvmRoute.
         String requestJvmRoute = null;
-        int index = sessionId.indexOf(".");
+        int index = sessionId.indexOf('.');
         if (index > 0) {
             requestJvmRoute = sessionId
                     .substring(index + 1, sessionId.length());
@@ -380,24 +368,9 @@ public class JvmRouteBinderValve extends ValveBase implements ClusterValve {
     protected synchronized void startInternal() throws LifecycleException {
 
         if (cluster == null) {
-            Container hostContainer = getContainer();
-            // compatibility with JvmRouteBinderValve version 1.1
-            // ( setup at context.xml or context.xml.default )
-            if (!(hostContainer instanceof Host)) {
-                if (log.isWarnEnabled()) {
-                    log.warn(sm.getString("jvmRoute.configure.warn"));
-                }
-                hostContainer = hostContainer.getParent();
-            }
-            if (hostContainer instanceof Host
-                    && ((Host) hostContainer).getCluster() != null) {
-                cluster = (CatalinaCluster) ((Host) hostContainer).getCluster();
-            } else {
-                Container engine = hostContainer.getParent() ;
-                if (engine instanceof Engine
-                        && ((Engine) engine).getCluster() != null) {
-                    cluster = (CatalinaCluster) ((Engine) engine).getCluster();
-                }
+            Cluster containerCluster = getContainer().getCluster();
+            if (containerCluster instanceof CatalinaCluster) {
+                setCluster((CatalinaCluster)containerCluster);
             }
         }
 

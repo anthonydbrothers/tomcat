@@ -17,6 +17,8 @@
 package javax.servlet.http;
 
 import java.io.Serializable;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.text.MessageFormat;
 import java.util.BitSet;
 import java.util.Locale;
@@ -48,27 +50,73 @@ import java.util.ResourceBundle;
  * cache pages that use cookies created with this class. This class does not
  * support the cache control defined with HTTP 1.1.
  * <p>
- * This class supports both the Version 0 (by Netscape) and Version 1 (by RFC
- * 2109) cookie specifications. By default, cookies are created using Version 0
- * to ensure the best interoperability.
+ * This class supports both the RFC 2109 and the RFC 6265 specifications.
+ * By default, cookies are created using RFC 6265.
  */
 public class Cookie implements Cloneable, Serializable {
 
     private static final CookieNameValidator validation;
+
     static {
+        boolean strictServletCompliance;
         boolean strictNaming;
-        String prop = System.getProperty("org.apache.tomcat.util.http.ServerCookie.STRICT_NAMING");
-        if (prop != null) {
-            strictNaming = Boolean.parseBoolean(prop);
+        boolean allowSlash;
+        String propStrictNaming;
+        String propFwdSlashIsSeparator;
+
+        if (System.getSecurityManager() == null) {
+            strictServletCompliance = Boolean.getBoolean(
+                    "org.apache.catalina.STRICT_SERVLET_COMPLIANCE");
+            propStrictNaming = System.getProperty(
+                    "org.apache.tomcat.util.http.ServerCookie.STRICT_NAMING");
+            propFwdSlashIsSeparator = System.getProperty(
+                    "org.apache.tomcat.util.http.ServerCookie.FWD_SLASH_IS_SEPARATOR");
         } else {
-            strictNaming = Boolean.getBoolean("org.apache.catalina.STRICT_SERVLET_COMPLIANCE");
+            strictServletCompliance = AccessController.doPrivileged(
+                    new PrivilegedAction<Boolean>() {
+                        @Override
+                        public Boolean run() {
+                            return Boolean.valueOf(System.getProperty(
+                                    "org.apache.catalina.STRICT_SERVLET_COMPLIANCE"));
+                        }
+                    }
+                ).booleanValue();
+            propStrictNaming = AccessController.doPrivileged(
+                    new PrivilegedAction<String>() {
+                        @Override
+                        public String run() {
+                            return System.getProperty(
+                                    "org.apache.tomcat.util.http.ServerCookie.STRICT_NAMING");
+                        }
+                    }
+                );
+            propFwdSlashIsSeparator = AccessController.doPrivileged(
+                    new PrivilegedAction<String>() {
+                        @Override
+                        public String run() {
+                            return System.getProperty(
+                                    "org.apache.tomcat.util.http.ServerCookie.FWD_SLASH_IS_SEPARATOR");
+                        }
+                    }
+                );
+        }
+
+        if (propStrictNaming == null) {
+            strictNaming = strictServletCompliance;
+        } else {
+            strictNaming = Boolean.parseBoolean(propStrictNaming);
+        }
+
+        if (propFwdSlashIsSeparator == null) {
+            allowSlash = !strictServletCompliance;
+        } else {
+            allowSlash = !Boolean.parseBoolean(propFwdSlashIsSeparator);
         }
 
         if (strictNaming) {
-            validation = new RFC2109Validator();
-        }
-        else {
-            validation = new NetscapeValidator();
+            validation = new RFC2109Validator(allowSlash);
+        } else {
+            validation = new RFC6265Validator();
         }
     }
 
@@ -352,7 +400,7 @@ public class Cookie implements Cloneable, Serializable {
         try {
             return super.clone();
         } catch (CloneNotSupportedException e) {
-            throw new RuntimeException(e.getMessage());
+            throw new RuntimeException(e);
         }
     }
 
@@ -384,7 +432,7 @@ public class Cookie implements Cloneable, Serializable {
 
 class CookieNameValidator {
     private static final String LSTRING_FILE = "javax.servlet.http.LocalStrings";
-    private static final ResourceBundle lStrings = ResourceBundle.getBundle(LSTRING_FILE);
+    protected static final ResourceBundle lStrings = ResourceBundle.getBundle(LSTRING_FILE);
 
     protected final BitSet allowed;
 
@@ -401,16 +449,7 @@ class CookieNameValidator {
         if (name == null || name.length() == 0) {
             throw new IllegalArgumentException(lStrings.getString("err.cookie_name_blank"));
         }
-        if (!isToken(name) ||
-                name.equalsIgnoreCase("Comment") ||
-                name.equalsIgnoreCase("Discard") ||
-                name.equalsIgnoreCase("Domain") ||
-                name.equalsIgnoreCase("Expires") ||
-                name.equalsIgnoreCase("Max-Age") ||
-                name.equalsIgnoreCase("Path") ||
-                name.equalsIgnoreCase("Secure") ||
-                name.equalsIgnoreCase("Version") ||
-                name.startsWith("$")) {
+        if (!isToken(name)) {
             String errMsg = lStrings.getString("err.cookie_name_is_token");
             throw new IllegalArgumentException(MessageFormat.format(errMsg, name));
         }
@@ -429,30 +468,28 @@ class CookieNameValidator {
     }
 }
 
-class NetscapeValidator extends CookieNameValidator {
-    private static final String NETSCAPE_SEPARATORS = ",; ";
+class RFC6265Validator extends CookieNameValidator {
+    private static final String RFC2616_SEPARATORS = "()<>@,;:\\\"/[]?={} \t";
 
-    NetscapeValidator() {
-        super(NETSCAPE_SEPARATORS);
+    RFC6265Validator() {
+        super(RFC2616_SEPARATORS);
     }
 }
 
-class RFC2109Validator extends CookieNameValidator {
-    private static final String RFC2616_SEPARATORS = "()<>@,;:\\\"/[]?={} \t";
-
-    RFC2109Validator() {
-        super(RFC2616_SEPARATORS);
-
+class RFC2109Validator extends RFC6265Validator {
+    RFC2109Validator(boolean allowSlash) {
         // special treatment to allow for FWD_SLASH_IS_SEPARATOR property
-        boolean allowSlash;
-        String prop = System.getProperty("org.apache.tomcat.util.http.ServerCookie.FWD_SLASH_IS_SEPARATOR");
-        if (prop != null) {
-            allowSlash = !Boolean.parseBoolean(prop);
-        } else {
-            allowSlash = !Boolean.getBoolean("org.apache.catalina.STRICT_SERVLET_COMPLIANCE");
-        }
         if (allowSlash) {
             allowed.set('/');
+        }
+    }
+
+    @Override
+    void validate(String name) {
+        super.validate(name);
+        if (name.charAt(0) == '$') {
+            String errMsg = lStrings.getString("err.cookie_name_is_token");
+            throw new IllegalArgumentException(MessageFormat.format(errMsg, name));
         }
     }
 }

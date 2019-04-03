@@ -18,6 +18,8 @@ package javax.servlet.http;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import javax.servlet.ServletResponse;
 
@@ -100,8 +102,7 @@ public interface HttpServletResponse extends ServletResponse {
      *         otherwise.
      * @deprecated As of version 2.1, use encodeURL(String url) instead
      */
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public String encodeUrl(String url);
 
     /**
@@ -111,8 +112,7 @@ public interface HttpServletResponse extends ServletResponse {
      *         otherwise.
      * @deprecated As of version 2.1, use encodeRedirectURL(String url) instead
      */
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public String encodeRedirectUrl(String url);
 
     /**
@@ -291,12 +291,13 @@ public interface HttpServletResponse extends ServletResponse {
      *             <code>setStatus(int)</code>, to send an error with a
      *             description use <code>sendError(int, String)</code>.
      */
-    @SuppressWarnings("dep-ann")
-    // Spec API does not use @Deprecated
+    @Deprecated
     public void setStatus(int sc, String sm);
 
     /**
-     * Return the HTTP status code associated with this Response.
+     * Get the HTTP status code for this Response.
+     *
+     * @return The HTTP status code for this Response
      *
      * @since Servlet 3.0
      */
@@ -310,6 +311,10 @@ public interface HttpServletResponse extends ServletResponse {
      *
      * @param name Header name to look up
      *
+     * @return The first value for the specified header. This is the raw value
+     *         so if multiple values are specified in the first header then they
+     *         will be returned as a single header value .
+     *
      * @since Servlet 3.0
      */
     public String getHeader(String name);
@@ -320,16 +325,56 @@ public interface HttpServletResponse extends ServletResponse {
      *
      * @param name Header name to look up
      *
+     * @return The values for the specified header. These are the raw values so
+     *         if multiple values are specified in a single header that will be
+     *         returned as a single header value.
+     *
      * @since Servlet 3.0
      */
     public Collection<String> getHeaders(String name);
 
     /**
-     * Return an Iterable of all the header names set for this response.
+     * Get the header names set for this HTTP response.
+     *
+     * @return The header names set for this HTTP response.
      *
      * @since Servlet 3.0
      */
     public Collection<String> getHeaderNames();
+
+    /**
+     * Configure the supplier of the trailer headers. The supplier will be
+     * called in the scope of the thread that completes the response.
+     * <br>
+     * Trailers that don't meet the requirements of RFC 7230, section 4.1.2 will
+     * be ignored.
+     * <br>
+     * The default implementation is a NO-OP.
+     *
+     * @param supplier The supplier for the trailer headers
+     *
+     * @throws IllegalStateException if this method is called when the
+     *         underlying protocol does not support trailer headers or if using
+     *         HTTP/1.1 and the response has already been committed
+     *
+     * @since Servlet 4.0
+     */
+    public default void setTrailerFields(Supplier<Map<String, String>> supplier) {
+        // NO-OP
+    }
+
+    /**
+     * Obtain the supplier of the trailer headers.
+     * <br>
+     * The default implementation returns null.
+     *
+     * @return The supplier for the trailer headers
+     *
+     * @since Servlet 4.0
+     */
+    public default Supplier<Map<String, String>> getTrailerFields() {
+        return null;
+    }
 
     /*
      * Server status codes; see RFC 2068.

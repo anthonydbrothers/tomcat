@@ -15,10 +15,10 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project name="Apache Tomcat 8 Configuration Reference"
-        href="http://tomcat.apache.org/">
+<project name="Apache Tomcat 9 Configuration Reference"
+        href="https://tomcat.apache.org/">
 
-  <title>Apache Tomcat 8 Configuration Reference</title>
+  <title>Apache Tomcat 9 Configuration Reference</title>
 
   <logo href="/images/tomcat.gif">
     The Apache Tomcat Servlet/JSP Container
@@ -30,7 +30,7 @@
     <menu name="Links">
         <item name="Docs Home"             href="../index.html"/>
         <item name="Config Ref. Home"      href="index.html"/>
-        <item name="FAQ"                   href="http://wiki.apache.org/tomcat/FAQ" />
+        <item name="FAQ"                   href="https://wiki.apache.org/tomcat/FAQ" />
         <item name="User Comments"         href="#comments_section"/>
     </menu>
 
@@ -44,7 +44,8 @@
     </menu>
 
     <menu name="Connectors">
-        <item name="HTTP"                  href="http.html"/>
+        <item name="HTTP/1.1"              href="http.html"/>
+        <item name="HTTP/2"                href="http2.html"/>
         <item name="AJP"                   href="ajp.html"/>
     </menu>
 
@@ -56,6 +57,8 @@
     </menu>
 
     <menu name="Nested Components">
+        <item name="CookieProcessor"       href="cookie-processor.html"/>
+        <item name="CredentialHandler"     href="credentialhandler.html"/>
         <item name="Global Resources"      href="globalresources.html"/>
         <item name="JarScanner"            href="jar-scanner.html"/>
         <item name="JarScanFilter"         href="jar-scan-filter.html"/>
@@ -64,6 +67,7 @@
         <item name="Manager"               href="manager.html"/>
         <item name="Realm"                 href="realm.html"/>
         <item name="Resources"             href="resources.html"/>
+        <item name="SessionIdGenerator"    href="sessionidgenerator.html"/>
         <item name="Valve"                 href="valve.html"/>
     </menu>
 
@@ -86,6 +90,7 @@
 
     <menu name="Other">
         <item name="System properties"     href="systemprops.html"/>
+        <item name="JASPIC"                href="jaspic.html"/>
     </menu>
   </body>
 

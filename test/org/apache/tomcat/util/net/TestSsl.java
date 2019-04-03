@@ -29,8 +29,6 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
-import static org.junit.Assert.assertTrue;
-
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
@@ -41,7 +39,6 @@ import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.util.descriptor.web.ApplicationListener;
 import org.apache.tomcat.websocket.server.WsContextListener;
 
 /**
@@ -60,15 +57,16 @@ public class TestSsl extends TomcatBaseTest {
         File appDir = new File(getBuildDirectory(), "webapps/examples");
         org.apache.catalina.Context ctxt  = tomcat.addWebapp(
                 null, "/examples", appDir.getAbsolutePath());
-        ctxt.addApplicationListener(new ApplicationListener(
-                WsContextListener.class.getName(), false));
+        ctxt.addApplicationListener(WsContextListener.class.getName());
 
         TesterSupport.initSsl(tomcat);
 
         tomcat.start();
         ByteChunk res = getUrl("https://localhost:" + getPort() +
             "/examples/servlets/servlet/HelloWorldExample");
-        assertTrue(res.toString().indexOf("<h1>Hello World!</h1>") > 0);
+        Assert.assertTrue(res.toString().indexOf("<a href=\"../helloworld.html\">") > 0);
+        Assert.assertTrue("Checking no client issuer has been requested",
+                TesterSupport.getLastClientAuthRequestedIssuerCount() == 0);
     }
 
     @Test
@@ -80,16 +78,17 @@ public class TestSsl extends TomcatBaseTest {
         File appDir = new File(getBuildDirectory(), "webapps/examples");
         org.apache.catalina.Context ctxt  = tomcat.addWebapp(
                 null, "/examples", appDir.getAbsolutePath());
-        ctxt.addApplicationListener(new ApplicationListener(
-                WsContextListener.class.getName(), false));
+        ctxt.addApplicationListener(WsContextListener.class.getName());
 
-        TesterSupport.initSsl(tomcat, "localhost-copy1.jks", "changeit",
-                "tomcatpass");
+        TesterSupport.initSsl(tomcat, TesterSupport.LOCALHOST_KEYPASS_JKS,
+                TesterSupport.JKS_PASS, TesterSupport.JKS_KEY_PASS);
 
         tomcat.start();
         ByteChunk res = getUrl("https://localhost:" + getPort() +
             "/examples/servlets/servlet/HelloWorldExample");
-        assertTrue(res.toString().indexOf("<h1>Hello World!</h1>") > 0);
+        Assert.assertTrue(res.toString().indexOf("<a href=\"../helloworld.html\">") > 0);
+        Assert.assertTrue("Checking no client issuer has been requested",
+                TesterSupport.getLastClientAuthRequestedIssuerCount() == 0);
     }
 
 
@@ -98,19 +97,27 @@ public class TestSsl extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         Assume.assumeTrue("SSL renegotiation has to be supported for this test",
-                TesterSupport.isRenegotiationSupported(getTomcatInstance()));
+                TesterSupport.isClientRenegotiationSupported(getTomcatInstance()));
 
         Context root = tomcat.addContext("", TEMP_DIR);
         Wrapper w =
             Tomcat.addServlet(root, "tester", new TesterServlet());
         w.setAsyncSupported(true);
-        root.addServletMapping("/", "tester");
+        root.addServletMappingDecoded("/", "tester");
 
         TesterSupport.initSsl(tomcat);
 
         tomcat.start();
 
-        SSLContext sslCtx = SSLContext.getInstance("TLS");
+        SSLContext sslCtx;
+        if (TesterSupport.isDefaultTLSProtocolForTesting13(tomcat.getConnector())) {
+            // Force TLS 1.2 if TLS 1.3 is available as JSSE's TLS 1.3
+            // implementation doesn't support Post Handshake Authentication
+            // which is required for this test to pass.
+            sslCtx = SSLContext.getInstance(Constants.SSL_PROTO_TLSv1_2);
+        } else {
+            sslCtx = SSLContext.getInstance(Constants.SSL_PROTO_TLS);
+        }
         sslCtx.init(null, TesterSupport.getTrustManagers(), null);
         SSLSocketFactory socketFactory = sslCtx.getSocketFactory();
         SSLSocket socket = (SSLSocket) socketFactory.createSocket("localhost",
@@ -121,6 +128,8 @@ public class TestSsl extends TomcatBaseTest {
         Reader r = new InputStreamReader(is);
 
         doRequest(os, r);
+        Assert.assertTrue("Checking no client issuer has been requested",
+                TesterSupport.getLastClientAuthRequestedIssuerCount() == 0);
 
         TesterHandshakeListener listener = new TesterHandshakeListener();
         socket.addHandshakeCompletedListener(listener);
@@ -134,6 +143,8 @@ public class TestSsl extends TomcatBaseTest {
             while (requestCount < 10) {
                 requestCount++;
                 doRequest(os, r);
+                Assert.assertTrue("Checking no client issuer has been requested",
+                        TesterSupport.getLastClientAuthRequestedIssuerCount() == 0);
                 if (listener.isComplete() && listenerComplete == 0) {
                     listenerComplete = requestCount;
                 }
@@ -150,7 +161,7 @@ public class TestSsl extends TomcatBaseTest {
     }
 
     private void doRequest(OutputStream os, Reader r) throws IOException {
-        char[] expectedResponseLine = "HTTP/1.1 200 OK\r\n".toCharArray();
+        char[] expectedResponseLine = "HTTP/1.1 200 \r\n".toCharArray();
 
         os.write("GET /tester HTTP/1.1\r\n".getBytes());
         os.write("Host: localhost\r\n".getBytes());

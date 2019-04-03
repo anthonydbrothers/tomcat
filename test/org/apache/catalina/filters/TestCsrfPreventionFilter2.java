@@ -17,15 +17,14 @@
 
 package org.apache.catalina.filters;
 
-import static org.junit.Assert.assertTrue;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.filters.CsrfPreventionFilter.LruCache;
 
 public class TestCsrfPreventionFilter2 {
 
-    /**
+    /*
      * When this test fails, it tends to enter a long running loop but it will
      * eventually finish (after ~70s on a 8-core Windows box).
      */
@@ -34,7 +33,7 @@ public class TestCsrfPreventionFilter2 {
         int threadCount = 2;
         long iterationCount = 100000L;
 
-        assertTrue(threadCount > 1);
+        Assert.assertTrue(threadCount > 1);
 
         LruCache<String> cache = new LruCache<>(threadCount - 1);
 
@@ -52,7 +51,7 @@ public class TestCsrfPreventionFilter2 {
         }
 
         for (int i = 0; i < threadCount; i++) {
-            assertTrue(threads[i].getResult());
+            Assert.assertTrue(threads[i].getResult());
         }
 
     }

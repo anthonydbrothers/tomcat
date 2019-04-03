@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
  Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -15,23 +15,26 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+  http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
-    <version>9</version>
+    <version>15</version>
   </parent>
 
   <groupId>org.apache.tomcat</groupId>
-  <artifactId>jdbc-pool</artifactId>
-  <version>1.2-SNAPSHOT</version>
+  <artifactId>tomcat-jdbc</artifactId>
+  <version>8.0.15-SNAPSHOT</version>
+
   <packaging>jar</packaging>
 
   <name>jdbc-pool</name>
-  <url>http://people.apache.org/~fhanik/jdbc-pool/</url>
+  <url>https://people.apache.org/~fhanik/jdbc-pool/</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -55,7 +58,7 @@
   <scm>
     <connection>scm:svn:https://svn.apache.org/repos/asf/tomcat/trunk/modules/jdbc-pool</connection>
     <developerConnection>scm:svn:https://svn.apache.org/repos/asf/tomcat/trunk/modules/jdbc-pool</developerConnection>
-    <url>http://svn.apache.org/viewvc/tomcat/trunk/modules/jdbc-pool</url>
+    <url>https://svn.apache.org/viewvc/tomcat/trunk/modules/jdbc-pool</url>
   </scm>
 
   <dependencies>
@@ -72,8 +75,8 @@
     </dependency>
     <dependency>
       <groupId>org.apache.tomcat</groupId>
-      <artifactId>dbcp</artifactId>
-      <version>6.0.32</version>
+      <artifactId>tomcat-dbcp</artifactId>
+      <version>8.0.14</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -89,8 +92,8 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <configuration>
-          <source>1.7</source>
-          <target>1.7</target>
+          <source>1.8</source>
+          <target>1.8</target>
           <optimize>true</optimize>
           <debug>true</debug>
           <showDeprecation>true</showDeprecation>

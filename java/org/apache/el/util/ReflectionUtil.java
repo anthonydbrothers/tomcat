@@ -19,6 +19,8 @@ package org.apache.el.util;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -28,6 +30,7 @@ import javax.el.ELException;
 import javax.el.MethodNotFoundException;
 
 import org.apache.el.lang.ELSupport;
+import org.apache.el.lang.EvaluationContext;
 
 
 /**
@@ -56,10 +59,10 @@ public class ReflectionUtil {
         if (c == null) {
             if (name.endsWith("[]")) {
                 String nc = name.substring(0, name.length() - 2);
-                c = Class.forName(nc, true, Thread.currentThread().getContextClassLoader());
+                c = Class.forName(nc, true, getContextClassLoader());
                 c = Array.newInstance(c, 0).getClass();
             } else {
-                c = Class.forName(name, true, Thread.currentThread().getContextClassLoader());
+                c = Class.forName(name, true, getContextClassLoader());
             }
         }
         return c;
@@ -76,9 +79,12 @@ public class ReflectionUtil {
     }
 
     /**
-     * Converts an array of Class names to Class types
-     * @param s
-     * @throws ClassNotFoundException
+     * Converts an array of Class names to Class types.
+     * @param s  The array of class names
+     * @return An array of Class instance where the element at index i in the
+     *         result is an instance of the class with the name at index i in
+     *         the input
+     * @throws ClassNotFoundException If a class of a given name cannot be found
      */
     public static Class<?>[] toTypeArray(String[] s) throws ClassNotFoundException {
         if (s == null)
@@ -91,8 +97,10 @@ public class ReflectionUtil {
     }
 
     /**
-     * Converts an array of Class types to Class names
-     * @param c
+     * Converts an array of Class types to Class names.
+     * @param c The array of class instances
+     * @return An array of Class names where the element at index i in the
+     *         result is the name of the class instance at index i in the input
      */
     public static String[] toTypeNameArray(Class<?>[] c) {
         if (c == null)
@@ -106,21 +114,24 @@ public class ReflectionUtil {
 
     /**
      * Returns a method based on the criteria.
+     * @param ctx the context in which the expression is being evaluated
      * @param base the object that owns the method
      * @param property the name of the method
      * @param paramTypes the parameter types to use
      * @param paramValues the parameter values
      * @return the method specified
-     * @throws MethodNotFoundException
+     * @throws MethodNotFoundException If a method cannot be found that matches
+     *         the given criteria
      */
     /*
      * This class duplicates code in javax.el.Util. When making changes keep
      * the code in sync.
      */
     @SuppressWarnings("null")
-    public static Method getMethod(Object base, Object property,
+    public static Method getMethod(EvaluationContext ctx, Object base, Object property,
             Class<?>[] paramTypes, Object[] paramValues)
             throws MethodNotFoundException {
+
         if (base == null || property == null) {
             throw new MethodNotFoundException(MessageFactory.get(
                     "error.method.notfound", base, property,
@@ -147,17 +158,30 @@ public class ReflectionUtil {
             }
 
             Class<?>[] mParamTypes = m.getParameterTypes();
-            int mParamCount;
-            if (mParamTypes == null) {
-                mParamCount = 0;
-            } else {
-                mParamCount = mParamTypes.length;
-            }
+            int mParamCount = mParamTypes.length;
 
             // Check the number of parameters
-            if (!(paramCount == mParamCount ||
-                    (m.isVarArgs() && paramCount >= mParamCount))) {
+            // Multiple tests to improve readability
+            if (!m.isVarArgs() && paramCount != mParamCount) {
                 // Method has wrong number of parameters
+                continue;
+            }
+            if (m.isVarArgs() && paramCount < mParamCount -1) {
+                // Method has wrong number of parameters
+                continue;
+            }
+            if (m.isVarArgs() && paramCount == mParamCount && paramValues != null &&
+                    paramValues.length > paramCount && !paramTypes[mParamCount -1].isArray()) {
+                // Method arguments don't match
+                continue;
+            }
+            if (m.isVarArgs() && paramCount > mParamCount && paramValues != null &&
+                    paramValues.length != paramCount) {
+                // Might match a different varargs method
+                continue;
+            }
+            if (!m.isVarArgs() && paramValues != null && paramCount != paramValues.length) {
+                // Might match a different varargs method
                 continue;
             }
 
@@ -168,9 +192,12 @@ public class ReflectionUtil {
             boolean noMatch = false;
             for (int i = 0; i < mParamCount; i++) {
                 // Can't be null
-                if (mParamTypes[i].equals(paramTypes[i])) {
-                    exactMatch++;
-                } else if (i == (mParamCount - 1) && m.isVarArgs()) {
+                if (m.isVarArgs() && i == (mParamCount - 1)) {
+                    if (i == paramCount || (paramValues != null && paramValues.length == i)) {
+                        // Nothing is passed as varargs
+                        assignableMatch++;
+                        break;
+                    }
                     Class<?> varType = mParamTypes[i].getComponentType();
                     for (int j = i; j < paramCount; j++) {
                         if (isAssignableFrom(paramTypes[j], varType)) {
@@ -180,7 +207,7 @@ public class ReflectionUtil {
                                 noMatch = true;
                                 break;
                             } else {
-                                if (isCoercibleFrom(paramValues[j], varType)) {
+                                if (isCoercibleFrom(ctx, paramValues[j], varType)) {
                                     coercibleMatch++;
                                 } else {
                                     noMatch = true;
@@ -192,18 +219,22 @@ public class ReflectionUtil {
                         // lead to a varArgs method matching when the result
                         // should be ambiguous
                     }
-                } else if (isAssignableFrom(paramTypes[i], mParamTypes[i])) {
-                    assignableMatch++;
                 } else {
-                    if (paramValues == null) {
-                        noMatch = true;
-                        break;
+                    if (mParamTypes[i].equals(paramTypes[i])) {
+                        exactMatch++;
+                    } else if (paramTypes[i] != null && isAssignableFrom(paramTypes[i], mParamTypes[i])) {
+                        assignableMatch++;
                     } else {
-                        if (isCoercibleFrom(paramValues[i], mParamTypes[i])) {
-                            coercibleMatch++;
-                        } else {
+                        if (paramValues == null) {
                             noMatch = true;
                             break;
+                        } else {
+                            if (isCoercibleFrom(ctx, paramValues[i], mParamTypes[i])) {
+                                coercibleMatch++;
+                            } else {
+                                noMatch = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -218,12 +249,13 @@ public class ReflectionUtil {
                 return getMethod(base.getClass(), m);
             }
 
-            candidates.put(m, new MatchResult(exactMatch, assignableMatch, coercibleMatch));
+            candidates.put(m, new MatchResult(
+                    exactMatch, assignableMatch, coercibleMatch, m.isBridge()));
         }
 
         // Look for the method that has the highest number of parameters where
         // the type matches exactly
-        MatchResult bestMatch = new MatchResult(0, 0, 0);
+        MatchResult bestMatch = new MatchResult(0, 0, 0, false);
         Method match = null;
         boolean multiple = false;
         for (Map.Entry<Method, MatchResult> entry : candidates.entrySet()) {
@@ -374,11 +406,11 @@ public class ReflectionUtil {
      * This class duplicates code in javax.el.Util. When making changes keep
      * the code in sync.
      */
-    private static boolean isCoercibleFrom(Object src, Class<?> target) {
+    private static boolean isCoercibleFrom(EvaluationContext ctx, Object src, Class<?> target) {
         // TODO: This isn't pretty but it works. Significant refactoring would
         //       be required to avoid the exception.
         try {
-            ELSupport.coerceToType(src, target);
+            ELSupport.coerceToType(ctx, src, target);
         } catch (ELException e) {
             return false;
         }
@@ -441,6 +473,28 @@ public class ReflectionUtil {
         return null;
     }
 
+
+    private static ClassLoader getContextClassLoader() {
+        ClassLoader tccl;
+        if (System.getSecurityManager() != null) {
+            PrivilegedAction<ClassLoader> pa = new PrivilegedGetTccl();
+            tccl = AccessController.doPrivileged(pa);
+        } else {
+            tccl = Thread.currentThread().getContextClassLoader();
+        }
+
+        return tccl;
+    }
+
+
+    private static class PrivilegedGetTccl implements PrivilegedAction<ClassLoader> {
+        @Override
+        public ClassLoader run() {
+            return Thread.currentThread().getContextClassLoader();
+        }
+    }
+
+
     /*
      * This class duplicates code in javax.el.Util. When making changes keep
      * the code in sync.
@@ -450,11 +504,13 @@ public class ReflectionUtil {
         private final int exact;
         private final int assignable;
         private final int coercible;
+        private final boolean bridge;
 
-        public MatchResult(int exact, int assignable, int coercible) {
+        public MatchResult(int exact, int assignable, int coercible, boolean bridge) {
             this.exact = exact;
             this.assignable = assignable;
             this.coercible = coercible;
+            this.bridge = bridge;
         }
 
         public int getExact() {
@@ -469,6 +525,10 @@ public class ReflectionUtil {
             return coercible;
         }
 
+        public boolean isBridge() {
+            return bridge;
+        }
+
         @Override
         public int compareTo(MatchResult o) {
             int cmp = Integer.compare(this.getExact(), o.getExact());
@@ -476,10 +536,40 @@ public class ReflectionUtil {
                 cmp = Integer.compare(this.getAssignable(), o.getAssignable());
                 if (cmp == 0) {
                     cmp = Integer.compare(this.getCoercible(), o.getCoercible());
+                    if (cmp == 0) {
+                        // The nature of bridge methods is such that it actually
+                        // doesn't matter which one we pick as long as we pick
+                        // one. That said, pick the 'right' one (the non-bridge
+                        // one) anyway.
+                        cmp = Boolean.compare(o.isBridge(), this.isBridge());
+                    }
                 }
             }
             return cmp;
         }
-    }
 
+        @Override
+        public boolean equals(Object o)
+        {
+            return o == this
+                    || (null != o
+                    && this.getClass().equals(o.getClass())
+                    && ((MatchResult)o).getExact() == this.getExact()
+                    && ((MatchResult)o).getAssignable() == this.getAssignable()
+                    && ((MatchResult)o).getCoercible() == this.getCoercible()
+                    && ((MatchResult)o).isBridge() == this.isBridge()
+                    )
+                    ;
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return (this.isBridge() ? 1 << 24 : 0)
+                    ^ this.getExact() << 16
+                    ^ this.getAssignable() << 8
+                    ^ this.getCoercible()
+                    ;
+        }
+    }
 }

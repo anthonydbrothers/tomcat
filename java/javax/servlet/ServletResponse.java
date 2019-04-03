@@ -32,14 +32,20 @@ import java.util.Locale;
  * multipart response, use a <code>ServletOutputStream</code> and manage the
  * character sections manually.
  * <p>
- * The charset for the MIME body response can be specified explicitly using the
- * {@link #setCharacterEncoding} and {@link #setContentType} methods, or
- * implicitly using the {@link #setLocale} method. Explicit specifications take
- * precedence over implicit specifications. If no charset is specified,
- * ISO-8859-1 will be used. The <code>setCharacterEncoding</code>,
- * <code>setContentType</code>, or <code>setLocale</code> method must be called
- * before <code>getWriter</code> and before committing the response for the
- * character encoding to be used.
+ * The charset for the MIME body response can be specified explicitly or
+ * implicitly. The priority order for specifying the response body is:
+ * <ol>
+ * <li>explicitly per request using {@link #setCharacterEncoding} and
+ *    {@link #setContentType}</li>
+ * <li>implicitly per request using {@link #setLocale}</li>
+ * <li>per web application via the deployment descriptor or
+ *     {@link ServletContext#setRequestCharacterEncoding(String)}</li>
+ * <li>container default via vendor specific configuration</li>
+ * <li>ISO-8859-1</li>
+ * </ol>
+ * The <code>setCharacterEncoding</code>, <code>setContentType</code>, or
+ * <code>setLocale</code> method must be called before <code>getWriter</code>
+ * and before committing the response for the character encoding to be used.
  * <p>
  * See the Internet RFCs such as <a href="http://www.ietf.org/rfc/rfc2045.txt">
  * RFC 2045</a> for more information on MIME. Protocols such as SMTP and HTTP
@@ -51,14 +57,23 @@ public interface ServletResponse {
 
     /**
      * Returns the name of the character encoding (MIME charset) used for the
-     * body sent in this response. The character encoding may have been
-     * specified explicitly using the {@link #setCharacterEncoding} or
-     * {@link #setContentType} methods, or implicitly using the
-     * {@link #setLocale} method. Explicit specifications take precedence over
-     * implicit specifications. Calls made to these methods after
-     * <code>getWriter</code> has been called or after the response has been
-     * committed have no effect on the character encoding. If no character
-     * encoding has been specified, <code>ISO-8859-1</code> is returned.
+     * body sent in this response.
+     * The charset for the MIME body response can be specified explicitly or
+     * implicitly. The priority order for specifying the response body is:
+     * <ol>
+     * <li>explicitly per request using {@link #setCharacterEncoding} and
+     *    {@link #setContentType}</li>
+     * <li>implicitly per request using {@link #setLocale}</li>
+     * <li>per web application via the deployment descriptor or
+     *     {@link ServletContext#setRequestCharacterEncoding(String)}</li>
+     * <li>container default via vendor specific configuration</li>
+     * <li>ISO-8859-1</li>
+     * </ol>
+     * Calls made to {@link #setCharacterEncoding}, {@link #setContentType} or
+     * {@link #setLocale} after <code>getWriter</code> has been called or after
+     * the response has been committed have no effect on the character encoding.
+     * If no character encoding has been specified, <code>ISO-8859-1</code> is
+     * returned.
      * <p>
      * See RFC 2047 (http://www.ietf.org/rfc/rfc2047.txt) for more information
      * about character encoding and MIME.
@@ -134,11 +149,12 @@ public interface ServletResponse {
     /**
      * Sets the character encoding (MIME charset) of the response being sent to
      * the client, for example, to UTF-8. If the character encoding has already
-     * been set by {@link #setContentType} or {@link #setLocale}, this method
-     * overrides it. Calling {@link #setContentType} with the
-     * <code>String</code> of <code>text/html</code> and calling this method
-     * with the <code>String</code> of <code>UTF-8</code> is equivalent with
-     * calling <code>setContentType</code> with the <code>String</code> of
+     * been set by container default, ServletContext default,
+     * {@link #setContentType} or {@link #setLocale}, this method overrides it.
+     * Calling {@link #setContentType} with the <code>String</code> of
+     * <code>text/html</code> and calling this method with the
+     * <code>String</code> of <code>UTF-8</code> is equivalent with calling
+     * <code>setContentType</code> with the <code>String</code> of
      * <code>text/html; charset=UTF-8</code>.
      * <p>
      * This method can be called repeatedly to change the character encoding.
@@ -173,7 +189,14 @@ public interface ServletResponse {
     public void setContentLength(int len);
 
     /**
-     * TODO SERVLET 3.1
+     * Sets the length of the content body in the response In HTTP servlets,
+     * this method sets the HTTP Content-Length header.
+     *
+     * @param length
+     *            an integer specifying the length of the content being returned
+     *            to the client; sets the Content-Length header
+     *
+     * @since Servlet 3.1
      */
     public void setContentLengthLong(long length);
 
@@ -246,6 +269,8 @@ public interface ServletResponse {
      * Forces any content in the buffer to be written to the client. A call to
      * this method automatically commits the response, meaning the status code
      * and headers will be written.
+     *
+     * @throws IOException if an I/O occurs during the flushing of the response
      *
      * @see #setBufferSize
      * @see #getBufferSize
@@ -332,8 +357,11 @@ public interface ServletResponse {
     /**
      * Returns the locale specified for this response using the
      * {@link #setLocale} method. Calls made to <code>setLocale</code> after the
-     * response is committed have no effect. If no locale has been specified,
-     * the container's default locale is returned.
+     * response is committed have no effect.
+     *
+     * @return The locale specified for this response using the
+     *          {@link #setLocale} method. If no locale has been specified, the
+     *          container's default locale is returned.
      *
      * @see #setLocale
      */

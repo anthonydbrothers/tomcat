@@ -23,17 +23,17 @@ import java.lang.instrument.ClassFileTransformer;
  * {@link ClassFileTransformer}s. These transformers can instrument
  * (or weave) the byte code of classes loaded through this class loader
  * to alter their behavior. Currently only
- * {@link org.apache.catalina.loader.WebappClassLoader} implements this
+ * {@link org.apache.catalina.loader.WebappClassLoaderBase} implements this
  * interface. This allows web application frameworks or JPA providers
  * bundled with a web application to instrument web application classes
  * as necessary.
  * <p>
  * You should always program against the methods of this interface
  * (whether using reflection or otherwise). The methods in
- * {@code WebappClassLoader} are protected by the default security
+ * {@code WebappClassLoaderBase} are protected by the default security
  * manager if one is in use.
  *
- * @since 8.0, 7.0.44
+ * @since 8.0, 7.0.64
  */
 public interface InstrumentableClassLoader {
 
@@ -53,7 +53,7 @@ public interface InstrumentableClassLoader {
      * It will no longer be able to instrument the byte code of any classes
      * loaded by the class loader after the invocation of this method.
      * However, any classes already instrumented by this transformer before
-     * this method call will remain in their instramented state.
+     * this method call will remain in their instrumented state.
      *
      * @param transformer The transformer to remove
      */
@@ -75,5 +75,4 @@ public interface InstrumentableClassLoader {
      * @return the transformer-free copy of this class loader.
      */
     ClassLoader copyWithoutTransformers();
-
 }

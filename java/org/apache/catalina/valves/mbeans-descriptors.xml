@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -318,7 +318,7 @@
                type="boolean"/>
 
     <attribute name="interruptible"
-               description="Should this be blocked interruptibly until a permit is availabl?"
+               description="Should this be blocked interruptibly until a permit is available?"
                type="boolean"/>
 
     <attribute name="stateName"
@@ -329,10 +329,14 @@
   </mbean>
 
   <mbean name="RemoteAddrValve"
-         description="Concrete implementation of RequestFilterValve that  filters based on the string representation of the remote client's IP address"
+         description="Concrete implementation of RequestFilterValve that filters based on the string representation of the remote client's IP address"
          domain="Catalina"
          group="Valve"
          type="org.apache.catalina.valves.RemoteAddrValve">
+
+    <attribute name="addConnectorPort"
+               description="Append the server connector port to the client IP separated by a semicolon"
+               type="boolean"/>
 
     <attribute name="allow"
                description="The allow expression"
@@ -349,12 +353,12 @@
                is="true"
                type="boolean"/>
 
-    <attribute   name="className"
+    <attribute name="className"
                description="Fully qualified class name of the managed object"
                type="java.lang.String"
                writeable="false"/>
 
-    <attribute   name="deny"
+    <attribute name="deny"
                description="The deny expression"
                type="java.lang.String"/>
 
@@ -367,6 +371,10 @@
                is="true"
                type="boolean"
                writeable="false"/>
+
+    <attribute name="invalidAuthenticationWhenDeny"
+               description="Send an invalid authentication header instead of deny"
+               type="boolean"/>
 
     <attribute name="stateName"
                description="The name of the LifecycleState that this component is currently in"
@@ -389,6 +397,10 @@
          group="Valve"
          type="org.apache.catalina.valves.RemoteHostValve">
 
+    <attribute name="addConnectorPort"
+               description="Append the server connector port to the client IP separated by a semicolon"
+               type="boolean"/>
+
     <attribute name="allow"
                description="The allow expression"
                type="java.lang.String"/>
@@ -404,12 +416,12 @@
                is="true"
                type="boolean"/>
 
-    <attribute   name="className"
+    <attribute name="className"
                description="Fully qualified class name of the managed object"
                type="java.lang.String"
                writeable="false"/>
 
-    <attribute   name="deny"
+    <attribute name="deny"
                description="The deny expression"
                type="java.lang.String"/>
 
@@ -422,6 +434,10 @@
                is="true"
                type="boolean"
                writeable="false"/>
+
+    <attribute name="invalidAuthenticationWhenDeny"
+               description="Send an invalid authentication header instead of deny"
+               type="boolean"/>
 
     <attribute name="stateName"
                description="The name of the LifecycleState that this component is currently in"
@@ -515,6 +531,11 @@
     <attribute name="stateName"
                description="The name of the LifecycleState that this component is currently in"
                type="java.lang.String"
+               writeable="false"/>
+
+    <attribute name="stuckThreadCount"
+               description="Count of the threads currently considered stuck"
+               type="int"
                writeable="false"/>
 
     <attribute name="stuckThreadIds"

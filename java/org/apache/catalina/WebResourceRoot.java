@@ -27,15 +27,15 @@ import java.util.Set;
  * a Resource, the ResourceSets are processed in the following order:
  * <ol>
  * <li>Pre  - Resources defined by the &lt;PreResource&gt; element in the web
- *            application&apos;s context.xml. Resources will be searched in the
- *            order they were specified.</li>
+ *            application's context.xml. Resources will be searched in the order
+ *            they were specified.</li>
  * <li>Main - The main resources for the web application - i.e. the WAR or the
  *            directory containing the expanded WAR</li>
  * <li>JARs - Resource JARs as defined by the Servlet specification. JARs will
  *            be searched in the order they were added to the ResourceRoot.</li>
  * <li>Post - Resources defined by the &lt;PostResource&gt; element in the web
- *            application&apos;s context.xml. Resources will be searched in the
- *            order they were specified.</li>
+ *            application's context.xml. Resources will be searched in the order
+ *            they were specified.</li>
  * </ol>
  * The following conventions should be noted:
  * <ul>
@@ -76,7 +76,7 @@ import java.util.Set;
  * including:
  * - which ResourceSet to write to
  * - unexpected behaviour when deleting a resource from one ResourceSet since
- *   that may unmask a resource in a lower priority ResouceSet so what was a
+ *   that may unmask a resource in a lower priority ResourceSet so what was a
  *   delete looks like a replace with the user having no idea where the 'new'
  *   resource came from
  * - how to handle PUT when the target is read-only but it could be written to
@@ -247,11 +247,13 @@ public interface WebResourceRoot extends Lifecycle {
     /**
      * Adds the provided WebResourceSet to this web application as a 'Pre'
      * resource.
+     *
+     * @param webResourceSet the resource set to use
      */
     void addPreResources(WebResourceSet webResourceSet);
 
     /**
-     * Get the list of WebResourceSet configured to this web application
+     * @return the list of WebResourceSet configured to this web application
      * as a 'Pre' resource.
      */
     WebResourceSet[] getPreResources();
@@ -259,11 +261,13 @@ public interface WebResourceRoot extends Lifecycle {
     /**
      * Adds the provided WebResourceSet to this web application as a 'Jar'
      * resource.
+     *
+     * @param webResourceSet the resource set to use
      */
     void addJarResources(WebResourceSet webResourceSet);
 
     /**
-     * Get the list of WebResourceSet configured to this web application
+     * @return the list of WebResourceSet configured to this web application
      * as a 'Jar' resource.
      */
     WebResourceSet[] getJarResources();
@@ -271,22 +275,26 @@ public interface WebResourceRoot extends Lifecycle {
     /**
      * Adds the provided WebResourceSet to this web application as a 'Post'
      * resource.
+     *
+     * @param webResourceSet the resource set to use
      */
     void addPostResources(WebResourceSet webResourceSet);
 
     /**
-     * Get the list of WebResourceSet configured to this web application
+     * @return the list of WebResourceSet configured to this web application
      * as a 'Post' resource.
      */
     WebResourceSet[] getPostResources();
 
     /**
-     * Obtain the web application this WebResourceRoot is associated with.
+     * @return the web application this WebResourceRoot is associated with.
      */
     Context getContext();
 
     /**
      * Set the web application this WebResourceRoot is associated with.
+     *
+     * @param context the associated context
      */
     void setContext(Context context);
 
@@ -313,7 +321,7 @@ public interface WebResourceRoot extends Lifecycle {
     void setCachingAllowed(boolean cachingAllowed);
 
     /**
-     * Get whether or not caching is permitted for this web application.
+     * @return <code>true</code> if caching is permitted for this web application.
      */
     boolean isCachingAllowed();
 
@@ -378,14 +386,15 @@ public interface WebResourceRoot extends Lifecycle {
      *       logged and then closed.</li>
      * </ul>
      *
-     * @param trackLockedFiles @true to enable it, @false to disable it
+     * @param trackLockedFiles {@code true} to enable it, {@code false} to
+     *                         disable it
      */
     void setTrackLockedFiles(boolean trackLockedFiles);
 
     /**
      * Has the track locked files feature been enabled?
      *
-     * @return @true if it has been enabled, otherwise @false
+     * @return {@code true} if it has been enabled, otherwise {@code false}
      */
     boolean getTrackLockedFiles();
 
@@ -396,17 +405,32 @@ public interface WebResourceRoot extends Lifecycle {
      */
     void backgroundProcess();
 
+    /**
+     * Add a specified resource to track to be able to later release
+     * resources on stop.
+     * @param trackedResource the resource that will be tracked
+     */
     void registerTrackedResource(TrackedWebResource trackedResource);
 
+    /**
+     * Stop tracking specified resource, once it no longer needs to free resources.
+     * @param trackedResource the resource that was tracked
+     */
     void deregisterTrackedResource(TrackedWebResource trackedResource);
 
     /**
-     * Obtain the set of {@link WebResourceSet#getBaseUrl()} for all
+     * @return the set of {@link WebResourceSet#getBaseUrl()} for all
      * {@link WebResourceSet}s used by this root.
      */
     List<URL> getBaseUrls();
 
-    static enum ResourceSetType {
+    /**
+     * Implementations may cache some information to improve performance. This
+     * method triggers the clean-up of those resources.
+     */
+    void gc();
+
+    enum ResourceSetType {
         PRE,
         RESOURCE_JAR,
         POST,

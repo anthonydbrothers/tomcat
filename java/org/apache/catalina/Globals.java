@@ -16,8 +16,6 @@
  */
 package org.apache.catalina;
 
-import java.util.Locale;
-
 /**
  * Global constants that are applicable to multiple packages within Catalina.
  *
@@ -120,9 +118,13 @@ public final class Globals {
      * We do this because of the pathInfo mangling happening when using
      * the CGIServlet in conjunction with the SSI servlet. (value stored
      * as an object of type String)
+     *
+     * @deprecated Unused. This is no longer used as the CGIO servlet now has
+     *             generic handling for when it is used as an include.
+     *             This will be removed in Tomcat 10
      */
-     public static final String SSI_FLAG_ATTR =
-         "org.apache.catalina.ssi.SSIServlet";
+    @Deprecated
+    public static final String SSI_FLAG_ATTR = "org.apache.catalina.ssi.SSIServlet";
 
 
     /**
@@ -134,41 +136,6 @@ public final class Globals {
 
     public static final String GSS_CREDENTIAL_ATTR =
         "org.apache.catalina.realm.GSS_CREDENTIAL";
-
-
-    /**
-     * The request attribute that is set to the value of {@code Boolean.TRUE}
-     * if connector processing this request supports Comet API.
-     * Duplicated here for neater code in the catalina packages.
-     */
-    public static final String COMET_SUPPORTED_ATTR =
-        org.apache.coyote.Constants.COMET_SUPPORTED_ATTR;
-
-
-    /**
-     * The request attribute that is set to the value of {@code Boolean.TRUE}
-     * if connector processing this request supports setting
-     * per-connection request timeout through Comet API.
-     *
-     * @see org.apache.catalina.comet.CometEvent#setTimeout(int)
-     *
-     * Duplicated here for neater code in the catalina packages.
-     */
-    public static final String COMET_TIMEOUT_SUPPORTED_ATTR =
-            org.apache.coyote.Constants.COMET_TIMEOUT_SUPPORTED_ATTR;
-
-
-    /**
-     * The request attribute that can be set to a value of type
-     * {@code java.lang.Integer} to specify per-connection request
-     * timeout for Comet API. The value is in milliseconds.
-     *
-     * @see org.apache.catalina.comet.CometEvent#setTimeout(int)
-     *
-     * Duplicated here for neater code in the catalina packages.
-     */
-    public static final String COMET_TIMEOUT_ATTR =
-        org.apache.coyote.Constants.COMET_TIMEOUT_ATTR;
 
 
     /**
@@ -232,9 +199,6 @@ public final class Globals {
             org.apache.coyote.Constants.REMOTE_ADDR_ATTRIBUTE;
 
 
-    /**
-     *
-     */
     public static final String ASYNC_SUPPORTED_ATTR =
         "org.apache.catalina.ASYNC_SUPPORTED";
 
@@ -251,11 +215,18 @@ public final class Globals {
 
 
     /**
+     * The reason that the parameter parsing failed.
+     */
+    public static final String PARAMETER_PARSE_FAILED_REASON_ATTR =
+            "org.apache.catalina.parameter_parse_failed_reason";
+
+
+    /**
      * The master flag which controls strict servlet specification
      * compliance.
      */
     public static final boolean STRICT_SERVLET_COMPLIANCE =
-        Boolean.valueOf(System.getProperty("org.apache.catalina.STRICT_SERVLET_COMPLIANCE", "false")).booleanValue();
+        Boolean.parseBoolean(System.getProperty("org.apache.catalina.STRICT_SERVLET_COMPLIANCE", "false"));
 
 
     /**
@@ -305,30 +276,11 @@ public final class Globals {
     public static final String JASPER_XML_BLOCK_EXTERNAL_INIT_PARAM =
             "org.apache.jasper.XML_BLOCK_EXTERNAL";
 
-    static {
-        /**
-         * There are a few places where Tomcat either accesses JVM internals
-         * (e.g. the memory leak protection) or where feature support varies
-         * between JVMs (e.g. SPNEGO). These flags exist to enable Tomcat to
-         * adjust its behaviour based on the vendor of the JVM. In an ideal
-         * world this code would not exist.
-         */
-        String vendor = System.getProperty("java.vendor", "");
-        vendor = vendor.toLowerCase(Locale.ENGLISH);
-
-        if (vendor.startsWith("oracle") || vendor.startsWith("sun")) {
-            IS_ORACLE_JVM = true;
-            IS_IBM_JVM = false;
-        } else if (vendor.contains("ibm")) {
-            IS_ORACLE_JVM = false;
-            IS_IBM_JVM = true;
-        } else {
-            IS_ORACLE_JVM = false;
-            IS_IBM_JVM = false;
-        }
-    }
-
-    public static final boolean IS_ORACLE_JVM;
-
-    public static final boolean IS_IBM_JVM;
+    /**
+     * Name of the ServletContext attribute under which we store the context
+     * Realm's CredentialHandler (if both the Realm and the CredentialHandler
+     * exist).
+     */
+    public static final String CREDENTIAL_HANDLER
+            = "org.apache.catalina.CredentialHandler";
 }

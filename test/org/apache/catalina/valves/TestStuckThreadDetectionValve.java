@@ -38,8 +38,10 @@ public class TestStuckThreadDetectionValve extends TomcatBaseTest {
     private StandardContext context;
     private Tomcat tomcat;
 
+    @Override
     @Before
-    public void setup() {
+    public void setUp() throws Exception {
+        super.setUp();
         tomcat = getTomcatInstance();
         File docBase = new File(System.getProperty("java.io.tmpdir"));
         context = (StandardContext) tomcat.addContext("",
@@ -49,9 +51,9 @@ public class TestStuckThreadDetectionValve extends TomcatBaseTest {
     @Test
     public void testDetection() throws Exception {
         // second, we test the actual effect of the flag on the startup
-        StuckingServlet stuckingServlet = new StuckingServlet(5000L);
+        StickingServlet stickingServlet = new StickingServlet(8000L);
         Wrapper servlet = Tomcat.addServlet(context, "myservlet",
-                stuckingServlet);
+                stickingServlet);
         servlet.addMapping("/myservlet");
 
         StuckThreadDetectionValve valve = new StuckThreadDetectionValve();
@@ -76,30 +78,33 @@ public class TestStuckThreadDetectionValve extends TomcatBaseTest {
 
         };
         asyncThread.start();
+        try {
+            Thread.sleep(500L);
+            Assert.assertEquals(0, valve.getStuckThreadIds().length);
 
-        Thread.sleep(1000L);
-        Assert.assertEquals(0, valve.getStuckThreadIds().length);
-
-        Thread.sleep(2000L);
-        Assert.assertEquals(1, valve.getStuckThreadIds().length);
-
-        asyncThread.join();
-        Assert.assertFalse(stuckingServlet.wasInterrupted);
+            Thread.sleep(5000L);
+            Assert.assertEquals(1, valve.getStuckThreadIds().length);
+        } finally {
+            asyncThread.join(20000);
+            // check that we did not reach the join timeout
+            Assert.assertFalse(asyncThread.isAlive());
+        }
+        Assert.assertFalse(stickingServlet.wasInterrupted);
         Assert.assertTrue(result.toString().startsWith("OK"));
     }
 
     @Test
     public void testInterruption() throws Exception {
         // second, we test the actual effect of the flag on the startup
-        StuckingServlet stuckingServlet = new StuckingServlet(
+        StickingServlet stickingServlet = new StickingServlet(
                 TimeUnit.SECONDS.toMillis(20L));
         Wrapper servlet = Tomcat.addServlet(context, "myservlet",
-                stuckingServlet);
+                stickingServlet);
         servlet.addMapping("/myservlet");
 
         StuckThreadDetectionValve valve = new StuckThreadDetectionValve();
         valve.setThreshold(2);
-        valve.setInterruptThreadThreshold(4);
+        valve.setInterruptThreadThreshold(5);
         context.addValve(valve);
         context.setBackgroundProcessorDelay(1);
         tomcat.start();
@@ -120,28 +125,27 @@ public class TestStuckThreadDetectionValve extends TomcatBaseTest {
 
         };
         asyncThread.start();
+        try {
+            Thread.sleep(4000L);
+            Assert.assertEquals(1, valve.getStuckThreadIds().length);
 
-        Thread.sleep(1000L);
+        } finally {
+            asyncThread.join(20000);
+            // check that we did not reach the join timeout
+            Assert.assertFalse(asyncThread.isAlive());
+        }
+        Assert.assertTrue(stickingServlet.wasInterrupted);
         Assert.assertEquals(0, valve.getStuckThreadIds().length);
-
-        Thread.sleep(3000L);
-        Assert.assertEquals(1, valve.getStuckThreadIds().length);
-
-        Thread.sleep(3000L);
-        Assert.assertTrue(stuckingServlet.wasInterrupted);
-        Assert.assertEquals(0, valve.getStuckThreadIds().length);
-
-        asyncThread.join();
         Assert.assertTrue(result.toString().startsWith("OK"));
     }
 
-    private class StuckingServlet extends HttpServlet {
+    private static class StickingServlet extends HttpServlet {
 
         private static final long serialVersionUID = 1L;
         private final long delay;
         boolean wasInterrupted = false;
 
-        StuckingServlet(long delay) {
+        StickingServlet(long delay) {
             this.delay = delay;
         }
 

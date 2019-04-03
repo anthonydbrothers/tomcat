@@ -14,19 +14,15 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.jsse;
 
-import java.net.Socket;
-
 import javax.net.ssl.SSLSession;
-import javax.net.ssl.SSLSocket;
 
-import org.apache.tomcat.util.net.AbstractEndpoint;
+import org.apache.tomcat.util.compat.JreCompat;
+import org.apache.tomcat.util.net.SSLHostConfigCertificate;
 import org.apache.tomcat.util.net.SSLImplementation;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SSLUtil;
-import org.apache.tomcat.util.net.ServerSocketFactory;
 
 /* JSSEImplementation:
 
@@ -37,19 +33,11 @@ import org.apache.tomcat.util.net.ServerSocketFactory;
 
 public class JSSEImplementation extends SSLImplementation {
 
-    @Override
-    public String getImplementationName(){
-        return "JSSE";
-    }
-
-    @Override
-    public ServerSocketFactory getServerSocketFactory(AbstractEndpoint<?> endpoint)  {
-        return new JSSESocketFactory(endpoint);
-    }
-
-    @Override
-    public SSLSupport getSSLSupport(Socket s) {
-        return new JSSESupport((SSLSocket) s);
+    public JSSEImplementation() {
+        // Make sure the keySizeCache is loaded now as part of connector startup
+        // else the cache will be populated on first use which will slow that
+        // request down.
+        JSSESupport.init();
     }
 
     @Override
@@ -58,7 +46,12 @@ public class JSSEImplementation extends SSLImplementation {
     }
 
     @Override
-    public SSLUtil getSSLUtil(AbstractEndpoint<?> endpoint) {
-        return new JSSESocketFactory(endpoint);
+    public SSLUtil getSSLUtil(SSLHostConfigCertificate certificate) {
+        return new JSSEUtil(certificate);
+    }
+
+    @Override
+    public boolean isAlpnSupported() {
+        return JreCompat.isJre9Available();
     }
 }

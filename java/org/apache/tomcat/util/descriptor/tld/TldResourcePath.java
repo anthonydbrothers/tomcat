@@ -21,12 +21,13 @@ import java.io.InputStream;
 import java.net.URL;
 import java.util.Objects;
 
-import org.apache.tomcat.util.scan.Jar;
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.scan.JarFactory;
+import org.apache.tomcat.util.scan.ReferenceCountedJar;
 
 /**
  * A TLD Resource Path as defined in JSP 7.3.2.
- * <p/>
+ * <p>
  * This encapsulates references to Tag Library Descriptors that can be located
  * in different places:
  * <ul>
@@ -127,11 +128,20 @@ public class TldResourcePath {
         }
     }
 
-    public Jar getJar() throws IOException {
+    public Jar openJar() throws IOException {
         if (entryName == null) {
             return null;
         } else {
-            return JarFactory.newInstance(url);
+            // Bug 62976
+            // Jar files containing tags are typically opened during initial
+            // compilation and then closed when compilation is complete. The
+            // reference counting wrapper is used because, when background
+            // compilation is enabled, the Jar will need to be accessed (to
+            // check for modifications) after it has been closed at the end
+            // of the compilation stage.
+            // Using a reference counted Jar enables the Jar to be re-opened,
+            // used and then closed again rather than triggering an ISE.
+            return new ReferenceCountedJar(url);
         }
     }
 

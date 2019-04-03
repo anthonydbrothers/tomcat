@@ -22,6 +22,7 @@ package org.apache.catalina.startup;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.catalina.Globals;
 import org.apache.juli.logging.Log;
@@ -56,7 +57,7 @@ import org.apache.tomcat.util.ExceptionUtils;
  *         to corresponding to the value of <code>catalina.home</code>
  *         (useful when your command line tool runs Ant).</li>
  *     <li><em>-common</em> : Add <code>common/classes</code> and
- *         <code>common/lib</codE) to the class loader repositories.</li>
+ *         <code>common/lib</code> to the class loader repositories.</li>
  *     <li><em>-server</em> : Add <code>server/classes</code> and
  *         <code>server/lib</code> to the class loader repositories.</li>
  *     <li><em>-shared</em> : Add <code>shared/classes</code> and
@@ -157,8 +158,8 @@ public final class Tool {
         // Construct the class loader we will be using
         ClassLoader classLoader = null;
         try {
-            ArrayList<File> packed = new ArrayList<>();
-            ArrayList<File> unpacked = new ArrayList<>();
+            List<File> packed = new ArrayList<>();
+            List<File> unpacked = new ArrayList<>();
             unpacked.add(new File(catalinaHome, "classes"));
             packed.add(new File(catalinaHome, "lib"));
             if (common) {

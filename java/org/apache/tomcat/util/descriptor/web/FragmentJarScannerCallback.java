@@ -20,14 +20,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.JarURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.JarScannerCallback;
-import org.apache.tomcat.util.scan.Jar;
-import org.apache.tomcat.util.scan.JarFactory;
 import org.xml.sax.InputSource;
 
 /**
@@ -50,13 +48,10 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
         this.parseRequired = parseRequired;
     }
 
-    @Override
-    public void scan(JarURLConnection jarConn, String webappPath, boolean isWebapp)
-            throws IOException {
 
-        URL url = jarConn.getURL();
-        URL resourceURL = jarConn.getJarFileURL();
-        Jar jar = null;
+    @Override
+    public void scan(Jar jar, String webappPath, boolean isWebapp) throws IOException {
+
         InputStream is = null;
         WebXml fragment = new WebXml();
         fragment.setWebappJar(isWebapp);
@@ -68,7 +63,6 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
             // web-fragment.xml files don't need to be parsed if they are never
             // going to be used.
             if (isWebapp && parseRequired) {
-                jar = JarFactory.newInstance(url);
                 is = jar.getInputStream(FRAGMENT_LOCATION);
             }
 
@@ -77,25 +71,18 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
                 // distributable
                 fragment.setDistributable(true);
             } else {
-                InputSource source = new InputSource(
-                        "jar:" + resourceURL.toString() + "!/" + FRAGMENT_LOCATION);
+                String fragmentUrl = jar.getURL(FRAGMENT_LOCATION);
+                InputSource source = new InputSource(fragmentUrl);
                 source.setByteStream(is);
                 if (!webXmlParser.parseWebXml(source, fragment, true)) {
                     ok = false;
                 }
             }
         } finally {
-            if (jar != null) {
-                jar.close();
-            }
-            fragment.setURL(url);
-            if (fragment.getName() == null) {
-                fragment.setName(fragment.getURL().toString());
-            }
-            fragment.setJarName(extractJarFileName(url));
-            fragments.put(fragment.getName(), fragment);
+            addFragment(fragment, jar.getJarFileURL());
         }
     }
+
 
     private String extractJarFileName(URL input) {
         String url = input.toString();
@@ -108,23 +95,24 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
         return url.substring(url.lastIndexOf('/') + 1);
     }
 
+
     @Override
     public void scan(File file, String webappPath, boolean isWebapp) throws IOException {
 
-        InputStream stream = null;
         WebXml fragment = new WebXml();
         fragment.setWebappJar(isWebapp);
         fragment.setDelegate(delegate);
 
+        File fragmentFile = new File(file, FRAGMENT_LOCATION);
         try {
-            File fragmentFile = new File(file, FRAGMENT_LOCATION);
             if (fragmentFile.isFile()) {
-                stream = new FileInputStream(fragmentFile);
-                InputSource source =
-                    new InputSource(fragmentFile.toURI().toURL().toString());
-                source.setByteStream(stream);
-                if (!webXmlParser.parseWebXml(source, fragment, true)) {
-                    ok = false;
+                try (InputStream stream = new FileInputStream(fragmentFile)) {
+                    InputSource source =
+                        new InputSource(fragmentFile.toURI().toURL().toString());
+                    source.setByteStream(stream);
+                    if (!webXmlParser.parseWebXml(source, fragment, true)) {
+                        ok = false;
+                    }
                 }
             } else {
                 // If there is no web.xml, normal folder no impact on
@@ -132,13 +120,27 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
                 fragment.setDistributable(true);
             }
         } finally {
-            fragment.setURL(file.toURI().toURL());
-            if (fragment.getName() == null) {
-                fragment.setName(fragment.getURL().toString());
-            }
-            fragment.setJarName(file.getName());
-            fragments.put(fragment.getName(), fragment);
+            addFragment(fragment, file.toURI().toURL());
         }
+    }
+
+
+    private void addFragment(WebXml fragment, URL url) {
+        fragment.setURL(url);
+        if (fragment.getName() == null) {
+            fragment.setName(url.toString());
+        }
+        fragment.setJarName(extractJarFileName(url));
+        if (fragments.containsKey(fragment.getName())) {
+            // Duplicate. Mark the fragment that has already been found with
+            // this name as having a duplicate so Tomcat can handle it
+            // correctly when the fragments are being ordered.
+            String duplicateName = fragment.getName();
+            fragments.get(duplicateName).setDuplicated(true);
+            // Rename the current fragment so it doesn't clash
+            fragment.setName(url.toString());
+        }
+        fragments.put(fragment.getName(), fragment);
     }
 
 

@@ -17,7 +17,9 @@
 package org.apache.tomcat.websocket.server;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import javax.websocket.Extension;
 import javax.websocket.HandshakeResponse;
@@ -31,8 +33,10 @@ public class DefaultServerEndpointConfigurator
     public <T> T getEndpointInstance(Class<T> clazz)
             throws InstantiationException {
         try {
-            return clazz.newInstance();
-        } catch (IllegalAccessException e) {
+            return clazz.getConstructor().newInstance();
+        } catch (InstantiationException e) {
+            throw e;
+        } catch (ReflectiveOperationException e) {
             InstantiationException ie = new InstantiationException();
             ie.initCause(e);
             throw ie;
@@ -56,10 +60,13 @@ public class DefaultServerEndpointConfigurator
     @Override
     public List<Extension> getNegotiatedExtensions(List<Extension> installed,
             List<Extension> requested) {
-
+        Set<String> installedNames = new HashSet<>();
+        for (Extension e : installed) {
+            installedNames.add(e.getName());
+        }
         List<Extension> result = new ArrayList<>();
         for (Extension request : requested) {
-            if (installed.contains(request)) {
+            if (installedNames.contains(request.getName())) {
                 result.add(request);
             }
         }

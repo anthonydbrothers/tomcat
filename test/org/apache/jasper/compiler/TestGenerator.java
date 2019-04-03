@@ -17,7 +17,6 @@
 
 package org.apache.jasper.compiler;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.Date;
 import java.util.HashMap;
@@ -31,31 +30,18 @@ import javax.servlet.jsp.tagext.TagExtraInfo;
 import javax.servlet.jsp.tagext.TagSupport;
 import javax.servlet.jsp.tagext.VariableInfo;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
 import org.junit.Assert;
 import org.junit.Test;
 
-import org.apache.catalina.WebResourceRoot;
-import org.apache.catalina.core.StandardContext;
-import org.apache.catalina.startup.Tomcat;
+import org.apache.catalina.LifecycleException;
 import org.apache.catalina.startup.TomcatBaseTest;
-import org.apache.catalina.webresources.StandardRoot;
 import org.apache.tomcat.util.buf.ByteChunk;
 
 public class TestGenerator extends TomcatBaseTest {
 
     @Test
     public void testBug45015a() throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-
-        File appDir =
-            new File("test/webapp");
-        // app dir is relative to server home
-        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
-
-        tomcat.start();
+        getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk res = getUrl("http://localhost:" + getPort() +
                 "/test/bug45nnn/bug45015a.jsp");
@@ -77,61 +63,32 @@ public class TestGenerator extends TomcatBaseTest {
 
     @Test
     public void testBug45015b() throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-
-        File appDir =
-            new File("test/webapp");
-        // app dir is relative to server home
-        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
-
-        tomcat.start();
+        getTomcatInstanceTestWebapp(false, true);
 
         int rc = getUrl("http://localhost:" + getPort() +
                 "/test/bug45nnn/bug45015b.jsp", new ByteChunk(), null);
 
-        assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
+        Assert.assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
     }
 
     @Test
     public void testBug45015c() throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-
-        File appDir =
-            new File("test/webapp");
-        // app dir is relative to server home
-        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
-
-        tomcat.start();
+        getTomcatInstanceTestWebapp(false, true);
 
         int rc = getUrl("http://localhost:" + getPort() +
                 "/test/bug45nnn/bug45015c.jsp", new ByteChunk(), null);
 
-        assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
+        Assert.assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
     }
 
     @Test
     public void testBug48701Fail() throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-
-        File appDir =
-            new File("test/webapp");
-        // app dir is relative to server home
-        StandardContext ctxt = (StandardContext) tomcat.addWebapp(null,
-                "/test", appDir.getAbsolutePath());
-
-        // This test needs the JSTL libraries
-        File lib = new File("webapps/examples/WEB-INF/lib");
-        ctxt.setResources(new StandardRoot(ctxt));
-        ctxt.getResources().createWebResourceSet(
-                WebResourceRoot.ResourceSetType.POST, "/WEB-INF/lib",
-                lib.getAbsolutePath(), null, "/");
-
-        tomcat.start();
+        getTomcatInstanceTestWebapp(true, true);
 
         int rc = getUrl("http://localhost:" + getPort() +
                 "/test/bug48nnn/bug48701-fail.jsp", new ByteChunk(), null);
 
-        assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
+        Assert.assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
     }
 
     @Test
@@ -155,14 +112,7 @@ public class TestGenerator extends TomcatBaseTest {
     }
 
     private void testBug48701(String jsp) throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-
-        File appDir =
-            new File("test/webapp");
-        // app dir is relative to server home
-        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
-
-        tomcat.start();
+        getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk res = getUrl("http://localhost:" + getPort() +
                 "/test/" + jsp);
@@ -230,11 +180,7 @@ public class TestGenerator extends TomcatBaseTest {
                               "<p style=\"color:red\">04-Red</p>",
                               "<p>05-Not Red</p>"};
 
-        Tomcat tomcat = getTomcatInstance();
-
-        File appDir = new File("test/webapp");
-        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
-        tomcat.start();
+        getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk res = new ByteChunk();
         Map<String,List<String>> headers = new HashMap<>();
@@ -248,7 +194,7 @@ public class TestGenerator extends TomcatBaseTest {
         int i = 0;
         for (String line : lines) {
             if (line.length() > 0) {
-                assertEquals(expected[i], line);
+                Assert.assertEquals(expected[i], line);
                 i++;
             }
         }
@@ -256,18 +202,12 @@ public class TestGenerator extends TomcatBaseTest {
 
     /** Assertion for text printed by tags:echo */
     private static void assertEcho(String result, String expected) {
-        assertTrue(result.indexOf("<p>" + expected + "</p>") > 0);
+        Assert.assertTrue(result.indexOf("<p>" + expected + "</p>") > 0);
     }
 
     @Test
     public void testBug56529() throws Exception {
-        Tomcat tomcat = getTomcatInstance();
-
-        File appDir = new File("test/webapp");
-        // app dir is relative to server home
-        tomcat.addWebapp(null, "/test", appDir.getAbsolutePath());
-
-        tomcat.start();
+        getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk bc = new ByteChunk();
         int rc = getUrl("http://localhost:" + getPort() +
@@ -316,5 +256,39 @@ public class TestGenerator extends TomcatBaseTest {
             return EVAL_PAGE;
         }
 
+    }
+
+    @Test
+    public void testBug56581() throws LifecycleException {
+        getTomcatInstanceTestWebapp(false, true);
+
+        ByteChunk res = new ByteChunk();
+        try {
+            getUrl("http://localhost:" + getPort()
+                    + "/test/bug5nnnn/bug56581.jsp", res, null);
+            Assert.fail("An IOException was expected.");
+        } catch (IOException expected) {
+            // ErrorReportValve in Tomcat 8.0.9+ flushes and aborts the
+            // connection when an unexpected error is encountered and response
+            // has already been committed. It results in an exception here:
+            // java.io.IOException: Premature EOF
+        }
+
+        String result = res.toString();
+        Assert.assertTrue(result.startsWith("0 Hello world!\n"));
+        Assert.assertTrue(result.endsWith("999 Hello world!\n"));
+    }
+
+
+    // https://bz.apache.org/bugzilla/show_bug.cgi?id=43400
+    @Test
+    public void testTagsWithEnums() throws Exception {
+        getTomcatInstanceTestWebapp(false, true);
+
+        ByteChunk res = getUrl("http://localhost:" + getPort() + "/test/bug43nnn/bug43400.jsp");
+
+        String result = res.toString();
+        System.out.println(result);
+        assertEcho(result, "ASYNC");
     }
 }

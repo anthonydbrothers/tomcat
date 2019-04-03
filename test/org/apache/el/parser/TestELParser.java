@@ -17,17 +17,19 @@
 
 package org.apache.el.parser;
 
+import java.io.StringReader;
+
 import javax.el.ELContext;
 import javax.el.ELException;
 import javax.el.ExpressionFactory;
 import javax.el.ValueExpression;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-
+import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import org.apache.jasper.el.ELContextImpl;
+import org.apache.tomcat.util.collections.SynchronizedStack;
 
 public class TestELParser {
 
@@ -79,7 +81,7 @@ public class TestELParser {
         } catch (ELException ele) {
             e = ele;
         }
-        assertNotNull(e);
+        Assert.assertNotNull(e);
     }
 
     @Test
@@ -100,7 +102,7 @@ public class TestELParser {
         } catch (ELException ele) {
             e = ele;
         }
-        assertNotNull(e);
+        Assert.assertNotNull(e);
     }
 
 
@@ -196,7 +198,7 @@ public class TestELParser {
                 context, expr.toString(), String.class);
 
         String result = (String) ve.getValue(context);
-        assertEquals("true", result);
+        Assert.assertEquals("true", result);
     }
 
     @Test
@@ -213,10 +215,10 @@ public class TestELParser {
             "${(myBean.int1 > 1 and myBean.myBool) or "+
             "((myBean.myBool or myBean.myBool1) and myBean.int1 > 1)}",
             Boolean.class);
-        assertEquals(Boolean.FALSE, ve.getValue(context));
+        Assert.assertEquals(Boolean.FALSE, ve.getValue(context));
         beanC.setInt1(2);
         beanC.setMyBool1(true);
-        assertEquals(Boolean.TRUE, ve.getValue(context));
+        Assert.assertEquals(Boolean.TRUE, ve.getValue(context));
     }
 
     private void testExpression(String expression, String expected) {
@@ -227,6 +229,63 @@ public class TestELParser {
                 context, expression, String.class);
 
         String result = (String) ve.getValue(context);
-        assertEquals(expected, result);
+        Assert.assertEquals(expected, result);
+    }
+
+    /*
+     * Test to explore if re-using Parser instances is faster.
+     *
+     * Tests on my laptop show:
+     * - overhead by introducing the stack is in the noise for parsing even the
+     *   simplest expression
+     * - efficiency from re-using the ELParser is measurable for even a single
+     *   reuse of the parser
+     * - with large numbers of parses (~10k) performance for a trivial parse is
+     *   three times faster
+     * - around the 100 iterations mark GC overhead adds significant noise to
+     *   the results - for consistent results you either need fewer parses to
+     *   avoid triggering GC or more parses so the GC effects are evenly
+     *   distributed between the runs
+     *
+     * Note that the test is single threaded.
+     */
+    @Ignore
+    @Test
+    public void testParserPerformance() throws ParseException {
+        final int runs = 20;
+        final int parseIterations = 10000;
+
+
+        for (int j = 0; j < runs; j ++) {
+            long start = System.nanoTime();
+            SynchronizedStack<ELParser> stack = new SynchronizedStack<>();
+
+            for (int i = 0; i < parseIterations; i ++) {
+                ELParser parser = stack.pop();
+                if (parser == null) {
+                    parser = new ELParser(new StringReader("${'foo'}"));
+                } else {
+                    parser.ReInit(new StringReader("${'foo'}"));
+                }
+                parser.CompositeExpression();
+                stack.push(parser);
+            }
+            long end = System.nanoTime();
+
+            System.out.println(parseIterations +
+                    " iterations using ELParser.ReInit(...) took " + (end - start) + "ns");
+        }
+
+        for (int j = 0; j < runs; j ++) {
+            long start = System.nanoTime();
+            for (int i = 0; i < parseIterations; i ++) {
+                ELParser parser = new ELParser(new StringReader("${'foo'}"));
+                parser.CompositeExpression();
+            }
+            long end = System.nanoTime();
+
+            System.out.println(parseIterations +
+                    " iterations using    new ELParser(...) took " + (end - start) + "ns");
+        }
     }
 }

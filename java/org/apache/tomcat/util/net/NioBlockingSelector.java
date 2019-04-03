@@ -35,13 +35,15 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.collections.SynchronizedQueue;
 import org.apache.tomcat.util.collections.SynchronizedStack;
-import org.apache.tomcat.util.net.NioEndpoint.KeyAttachment;
+import org.apache.tomcat.util.net.NioEndpoint.NioSocketWrapper;
+import org.apache.tomcat.util.res.StringManager;
 
 public class NioBlockingSelector {
 
     private static final Log log = LogFactory.getLog(NioBlockingSelector.class);
+    protected static final StringManager sm = StringManager.getManager(NioBlockingSelector.class);
 
-    private static int threadCounter = 0;
+    private static final AtomicInteger threadCounter = new AtomicInteger();
 
     private final SynchronizedStack<KeyReference> keyReferenceStack =
             new SynchronizedStack<>();
@@ -58,7 +60,7 @@ public class NioBlockingSelector {
         poller = new BlockPoller();
         poller.selector = sharedSelector;
         poller.setDaemon(true);
-        poller.setName("NioBlockingSelector.BlockPoller-"+(++threadCounter));
+        poller.setName("NioBlockingSelector.BlockPoller-" + threadCounter.incrementAndGet());
         poller.start();
     }
 
@@ -85,12 +87,14 @@ public class NioBlockingSelector {
     public int write(ByteBuffer buf, NioChannel socket, long writeTimeout)
             throws IOException {
         SelectionKey key = socket.getIOChannel().keyFor(socket.getPoller().getSelector());
-        if ( key == null ) throw new IOException("Key no longer registered");
+        if (key == null) {
+            throw new IOException(sm.getString("nioBlockingSelector.keyNotRegistered"));
+        }
         KeyReference reference = keyReferenceStack.pop();
         if (reference == null) {
             reference = new KeyReference();
         }
-        KeyAttachment att = (KeyAttachment) key.attachment();
+        NioSocketWrapper att = (NioSocketWrapper) key.attachment();
         int written = 0;
         boolean timedout = false;
         int keycount = 1; //assume we can write
@@ -110,11 +114,7 @@ public class NioBlockingSelector {
                 try {
                     if ( att.getWriteLatch()==null || att.getWriteLatch().getCount()==0) att.startWriteLatch(1);
                     poller.add(att,SelectionKey.OP_WRITE,reference);
-                    if (writeTimeout < 0) {
-                        att.awaitWriteLatch(Long.MAX_VALUE,TimeUnit.MILLISECONDS);
-                    } else {
-                        att.awaitWriteLatch(writeTimeout,TimeUnit.MILLISECONDS);
-                    }
+                    att.awaitWriteLatch(AbstractEndpoint.toTimeout(writeTimeout),TimeUnit.MILLISECONDS);
                 } catch (InterruptedException ignore) {
                     // Ignore
                 }
@@ -157,12 +157,14 @@ public class NioBlockingSelector {
      */
     public int read(ByteBuffer buf, NioChannel socket, long readTimeout) throws IOException {
         SelectionKey key = socket.getIOChannel().keyFor(socket.getPoller().getSelector());
-        if ( key == null ) throw new IOException("Key no longer registered");
+        if (key == null) {
+            throw new IOException(sm.getString("nioBlockingSelector.keyNotRegistered"));
+        }
         KeyReference reference = keyReferenceStack.pop();
         if (reference == null) {
             reference = new KeyReference();
         }
-        KeyAttachment att = (KeyAttachment) key.attachment();
+        NioSocketWrapper att = (NioSocketWrapper) key.attachment();
         int read = 0;
         boolean timedout = false;
         int keycount = 1; //assume we can read
@@ -171,19 +173,14 @@ public class NioBlockingSelector {
             while(!timedout) {
                 if (keycount > 0) { //only read if we were registered for a read
                     read = socket.read(buf);
-                    if (read == -1)
-                        throw new EOFException();
-                    if (read > 0)
+                    if (read != 0) {
                         break;
+                    }
                 }
                 try {
                     if ( att.getReadLatch()==null || att.getReadLatch().getCount()==0) att.startReadLatch(1);
                     poller.add(att,SelectionKey.OP_READ, reference);
-                    if (readTimeout < 0) {
-                        att.awaitReadLatch(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
-                    } else {
-                        att.awaitReadLatch(readTimeout, TimeUnit.MILLISECONDS);
-                    }
+                    att.awaitReadLatch(AbstractEndpoint.toTimeout(readTimeout), TimeUnit.MILLISECONDS);
                 } catch (InterruptedException ignore) {
                     // Ignore
                 }
@@ -215,17 +212,12 @@ public class NioBlockingSelector {
     protected static class BlockPoller extends Thread {
         protected volatile boolean run = true;
         protected Selector selector = null;
-        protected final SynchronizedQueue<Runnable> events =
-                new SynchronizedQueue<>();
+        protected final SynchronizedQueue<Runnable> events = new SynchronizedQueue<>();
         public void disable() { run = false; selector.wakeup();}
         protected final AtomicInteger wakeupCounter = new AtomicInteger(0);
+
         public void cancelKey(final SelectionKey key) {
-            Runnable r = new Runnable() {
-                @Override
-                public void run() {
-                    key.cancel();
-                }
-            };
+            Runnable r = new RunnableCancel(key);
             events.offer(r);
             wakeup();
         }
@@ -234,7 +226,7 @@ public class NioBlockingSelector {
             if (wakeupCounter.addAndGet(1)==0) selector.wakeup();
         }
 
-        public void cancel(SelectionKey sk, KeyAttachment key, int ops){
+        public void cancel(SelectionKey sk, NioSocketWrapper key, int ops){
             if (sk!=null) {
                 sk.cancel();
                 sk.attach(null);
@@ -243,88 +235,50 @@ public class NioBlockingSelector {
             }
         }
 
-        public void add(final KeyAttachment key, final int ops, final KeyReference ref) {
+        public void add(final NioSocketWrapper key, final int ops, final KeyReference ref) {
             if ( key == null ) return;
             NioChannel nch = key.getSocket();
-            if ( nch == null ) return;
             final SocketChannel ch = nch.getIOChannel();
             if ( ch == null ) return;
 
-            Runnable r = new Runnable() {
-                @Override
-                public void run() {
-                    SelectionKey sk = ch.keyFor(selector);
-                    try {
-                        if (sk == null) {
-                            sk = ch.register(selector, ops, key);
-                            ref.key = sk;
-                        } else if (!sk.isValid()) {
-                            cancel(sk,key,ops);
-                        } else {
-                            sk.interestOps(sk.interestOps() | ops);
-                        }
-                    }catch (CancelledKeyException cx) {
-                        cancel(sk,key,ops);
-                    }catch (ClosedChannelException cx) {
-                        cancel(sk,key,ops);
-                    }
-                }
-            };
+            Runnable r = new RunnableAdd(ch, key, ops, ref);
             events.offer(r);
             wakeup();
         }
 
-        public void remove(final KeyAttachment key, final int ops) {
+        public void remove(final NioSocketWrapper key, final int ops) {
             if ( key == null ) return;
             NioChannel nch = key.getSocket();
-            if ( nch == null ) return;
             final SocketChannel ch = nch.getIOChannel();
             if ( ch == null ) return;
 
-            Runnable r = new Runnable() {
-                @Override
-                public void run() {
-                    SelectionKey sk = ch.keyFor(selector);
-                    try {
-                        if (sk == null) {
-                            if (SelectionKey.OP_WRITE==(ops&SelectionKey.OP_WRITE)) countDown(key.getWriteLatch());
-                            if (SelectionKey.OP_READ==(ops&SelectionKey.OP_READ))countDown(key.getReadLatch());
-                        } else {
-                            if (sk.isValid()) {
-                                sk.interestOps(sk.interestOps() & (~ops));
-                                if (SelectionKey.OP_WRITE==(ops&SelectionKey.OP_WRITE)) countDown(key.getWriteLatch());
-                                if (SelectionKey.OP_READ==(ops&SelectionKey.OP_READ))countDown(key.getReadLatch());
-                                if (sk.interestOps()==0) {
-                                    sk.cancel();
-                                    sk.attach(null);
-                                }
-                            }else {
-                                sk.cancel();
-                                sk.attach(null);
-                            }
-                        }
-                    }catch (CancelledKeyException cx) {
-                        if (sk!=null) {
-                            sk.cancel();
-                            sk.attach(null);
-                        }
-                    }
-                }
-            };
+            Runnable r = new RunnableRemove(ch, key, ops);
             events.offer(r);
             wakeup();
         }
-
 
         public boolean events() {
-            boolean result = false;
             Runnable r = null;
-            result = (events.size() > 0);
-            while ( (r = events.poll()) != null ) {
+
+            /* We only poll and run the runnable events when we start this
+             * method. Further events added to the queue later will be delayed
+             * to the next execution of this method.
+             *
+             * We do in this way, because running event from the events queue
+             * may lead the working thread to add more events to the queue (for
+             * example, the worker thread may add another RunnableAdd event when
+             * waken up by a previous RunnableAdd event who got an invalid
+             * SelectionKey). Trying to consume all the events in an increasing
+             * queue till it's empty, will make the loop hard to be terminated,
+             * which will kill a lot of time, and greatly affect performance of
+             * the poller loop.
+             */
+            int size = events.size();
+            for (int i = 0; i < size && (r = events.poll()) != null; i++) {
                 r.run();
-                result = true;
             }
-            return result;
+
+            return (size > 0);
         }
 
         @Override
@@ -354,7 +308,7 @@ public class NioBlockingSelector {
                         continue;
                     } catch (Throwable x) {
                         ExceptionUtils.handleThrowable(x);
-                        log.error("",x);
+                        log.error(sm.getString("nioBlockingSelector.selectError"), x);
                         continue;
                     }
 
@@ -364,9 +318,8 @@ public class NioBlockingSelector {
                     // any active event.
                     while (run && iterator != null && iterator.hasNext()) {
                         SelectionKey sk = iterator.next();
-                        KeyAttachment attachment = (KeyAttachment)sk.attachment();
+                        NioSocketWrapper attachment = (NioSocketWrapper)sk.attachment();
                         try {
-                            attachment.access();
                             iterator.remove();
                             sk.interestOps(sk.interestOps() & (~sk.readyOps()));
                             if ( sk.isReadable() ) {
@@ -382,17 +335,24 @@ public class NioBlockingSelector {
                         }
                     }//while
                 }catch ( Throwable t ) {
-                    log.error("",t);
+                    log.error(sm.getString("nioBlockingSelector.processingError"), t);
                 }
             }
             events.clear();
-            try {
-                selector.selectNow();//cancel all remaining keys
-            }catch( Exception ignore ) {
-                if (log.isDebugEnabled())log.debug("",ignore);
+            // If using a shared selector, the NioSelectorPool will also try and
+            // close the selector. Try and avoid the ClosedSelectorException
+            // although because multiple threads are involved there is always
+            // the possibility of an Exception here.
+            if (selector.isOpen()) {
+                try {
+                    // Cancels all remaining keys
+                    selector.selectNow();
+                }catch( Exception ignore ) {
+                    if (log.isDebugEnabled())log.debug("",ignore);
+                }
             }
             try {
-                selector.close();//Close the connector
+                selector.close();
             }catch( Exception ignore ) {
                 if (log.isDebugEnabled())log.debug("",ignore);
             }
@@ -402,18 +362,112 @@ public class NioBlockingSelector {
             if ( latch == null ) return;
             latch.countDown();
         }
+
+
+        private class RunnableAdd implements Runnable {
+
+            private final SocketChannel ch;
+            private final NioSocketWrapper key;
+            private final int ops;
+            private final KeyReference ref;
+
+            public RunnableAdd(SocketChannel ch, NioSocketWrapper key, int ops, KeyReference ref) {
+                this.ch = ch;
+                this.key = key;
+                this.ops = ops;
+                this.ref = ref;
+            }
+
+            @Override
+            public void run() {
+                SelectionKey sk = ch.keyFor(selector);
+                try {
+                    if (sk == null) {
+                        sk = ch.register(selector, ops, key);
+                        ref.key = sk;
+                    } else if (!sk.isValid()) {
+                        cancel(sk, key, ops);
+                    } else {
+                        sk.interestOps(sk.interestOps() | ops);
+                    }
+                } catch (CancelledKeyException cx) {
+                    cancel(sk, key, ops);
+                } catch (ClosedChannelException cx) {
+                    cancel(null, key, ops);
+                }
+            }
+        }
+
+
+        private class RunnableRemove implements Runnable {
+
+            private final SocketChannel ch;
+            private final NioSocketWrapper key;
+            private final int ops;
+
+            public RunnableRemove(SocketChannel ch, NioSocketWrapper key, int ops) {
+                this.ch = ch;
+                this.key = key;
+                this.ops = ops;
+            }
+
+            @Override
+            public void run() {
+                SelectionKey sk = ch.keyFor(selector);
+                try {
+                    if (sk == null) {
+                        if (SelectionKey.OP_WRITE==(ops&SelectionKey.OP_WRITE)) countDown(key.getWriteLatch());
+                        if (SelectionKey.OP_READ==(ops&SelectionKey.OP_READ))countDown(key.getReadLatch());
+                    } else {
+                        if (sk.isValid()) {
+                            sk.interestOps(sk.interestOps() & (~ops));
+                            if (SelectionKey.OP_WRITE==(ops&SelectionKey.OP_WRITE)) countDown(key.getWriteLatch());
+                            if (SelectionKey.OP_READ==(ops&SelectionKey.OP_READ))countDown(key.getReadLatch());
+                            if (sk.interestOps()==0) {
+                                sk.cancel();
+                                sk.attach(null);
+                            }
+                        }else {
+                            sk.cancel();
+                            sk.attach(null);
+                        }
+                    }
+                }catch (CancelledKeyException cx) {
+                    if (sk!=null) {
+                        sk.cancel();
+                        sk.attach(null);
+                    }
+                }
+            }
+
+        }
+
+
+        public static class RunnableCancel implements Runnable {
+
+            private final SelectionKey key;
+
+            public RunnableCancel(SelectionKey key) {
+                this.key = key;
+            }
+
+            @Override
+            public void run() {
+                key.cancel();
+            }
+        }
     }
+
 
     public static class KeyReference {
         SelectionKey key = null;
 
         @Override
-        public void finalize() {
+        protected void finalize() {
             if (key!=null && key.isValid()) {
-                log.warn("Possible key leak, cancelling key in the finalizer.");
+                log.warn(sm.getString("nioBlockingSelector.possibleLeak"));
                 try {key.cancel();}catch (Exception ignore){}
             }
-            key = null;
         }
     }
 }

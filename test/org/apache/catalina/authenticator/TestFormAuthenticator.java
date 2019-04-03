@@ -26,10 +26,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -39,7 +36,6 @@ import org.apache.catalina.startup.TesterMapRealm;
 import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
-import org.apache.tomcat.util.descriptor.web.ApplicationListener;
 import org.apache.tomcat.util.descriptor.web.LoginConfig;
 import org.apache.tomcat.util.descriptor.web.SecurityCollection;
 import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
@@ -96,9 +92,8 @@ public class TestFormAuthenticator extends TomcatBaseTest {
     protected static final boolean SERVER_FREEZE_SESSID = !SERVER_CHANGE_SESSID;
 
     // minimum session timeout
-    private static final int TIMEOUT_MINS = 1;
-    private static final long TIMEOUT_DELAY_MSECS =
-                            (((TIMEOUT_MINS * 60) + 10) * 1000);
+    private static final int SHORT_SESSION_TIMEOUT_SECS = 1;
+    private static final long TIMEOUT_DELAY_MSECS = ((SHORT_SESSION_TIMEOUT_SECS + 10) * 1000);
 
     private FormAuthClient client;
 
@@ -240,6 +235,10 @@ public class TestFormAuthenticator extends TomcatBaseTest {
                 CLIENT_NO_COOKIES, SERVER_USE_COOKIES,
                 SERVER_FREEZE_SESSID);
 
+        // Force session to expire one second from now
+        Context context = (Context) getTomcatInstance().getHost().findChildren()[0];
+        forceSessionMaxInactiveInterval(context, SHORT_SESSION_TIMEOUT_SECS);
+
         // wait long enough for my session to expire
         Thread.sleep(TIMEOUT_DELAY_MSECS);
 
@@ -269,28 +268,28 @@ public class TestFormAuthenticator extends TomcatBaseTest {
         client.doResourceRequest("PUT", true, "/test?" +
                 SelectedMethodsServlet.PARAM + "=" +
                 SelectedMethodsServlet.VALUE, null);
-        assertTrue(client.getResponseLine(), client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.getResponseLine(), client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
         String originalSessionId = client.getSessionId();
         client.reset();
 
         // Second request replies to the login challenge
         client.doResourceRequest("POST", true, "/test/j_security_check",
                 FormAuthClientBase.LOGIN_REPLY);
-        assertTrue("login failed " + client.getResponseLine(),
+        Assert.assertTrue("login failed " + client.getResponseLine(),
                 client.isResponse303());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponseBodyOK());
         String redirectUri = client.getRedirectUri();
         client.reset();
 
         // Third request - the login was successful so
         // follow the redirect to the protected resource
         client.doResourceRequest("GET", true, redirectUri, null);
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
         String newSessionId = client.getSessionId();
 
-        assertTrue(!originalSessionId.equals(newSessionId));
+        Assert.assertTrue(!originalSessionId.equals(newSessionId));
         client.reset();
     }
 
@@ -331,8 +330,8 @@ public class TestFormAuthenticator extends TomcatBaseTest {
         // First request for protected resource gets the login page
         client.setUseContinue(useContinue);
         client.doResourceRequest(resourceMethod, false, null, null);
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
         String loginUri = client.extractBodyUri(
                 FormAuthClient.LOGIN_PARAM_TAG,
                 FormAuthClient.LOGIN_RESOURCE);
@@ -349,13 +348,13 @@ public class TestFormAuthenticator extends TomcatBaseTest {
         client.setUseContinue(useContinue);
         client.doLoginRequest(loginUri);
         if (clientShouldUseHttp11) {
-            assertTrue("login failed " + client.getResponseLine(),
+            Assert.assertTrue("login failed " + client.getResponseLine(),
                     client.isResponse303());
         } else {
-            assertTrue("login failed " + client.getResponseLine(),
+            Assert.assertTrue("login failed " + client.getResponseLine(),
                     client.isResponse302());
         }
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponseBodyOK());
         String redirectUri = client.getRedirectUri();
         client.reset();
 
@@ -365,8 +364,8 @@ public class TestFormAuthenticator extends TomcatBaseTest {
         if ("POST".equals(redirectMethod)) {
             client.setUseContinue(useContinue);
         }
-        assertTrue(client.isResponse200());
-        assertTrue(client.isResponseBodyOK());
+        Assert.assertTrue(client.isResponse200());
+        Assert.assertTrue(client.isResponseBodyOK());
         String protectedUri = client.extractBodyUri(
                 FormAuthClient.RESOURCE_PARAM_TAG,
                 FormAuthClient.PROTECTED_RESOURCE);
@@ -378,7 +377,7 @@ public class TestFormAuthenticator extends TomcatBaseTest {
             newSessionId = client.extractPathSessionId(protectedUri);
         }
         boolean sessionIdIsChanged = !(originalSessionId.equals(newSessionId));
-        assertTrue(sessionIdIsChanged == serverWillChangeSessid);
+        Assert.assertTrue(sessionIdIsChanged == serverWillChangeSessid);
         client.reset();
 
         // Subsequent requests - keep accessing the protected resource
@@ -411,8 +410,8 @@ public class TestFormAuthenticator extends TomcatBaseTest {
         for (int i = 0; i < repeatCount; i++) {
             client.setUseContinue(useContinue);
             client.doResourceRequest(resourceMethod, false, protectedUri, null);
-            assertTrue(client.isResponse200());
-            assertTrue(client.isResponseBodyOK(phase));
+            Assert.assertTrue(client.isResponse200());
+            Assert.assertTrue(client.isResponseBodyOK(phase));
             client.reset();
         }
     }
@@ -625,7 +624,7 @@ public class TestFormAuthenticator extends TomcatBaseTest {
 
         private void assertContains(String body, String expected) {
             if (!body.contains(expected)) {
-                fail("Response number " + requestCount
+                Assert.fail("Response number " + requestCount
                         + ": body check failure.\n"
                         + "Expected to contain substring: [" + expected
                         + "]\nActual: [" + body + "]");
@@ -643,13 +642,12 @@ public class TestFormAuthenticator extends TomcatBaseTest {
             this.clientShouldUseHttp11 = clientShouldUseHttp11;
 
             Tomcat tomcat = getTomcatInstance();
-            File appDir = new File(getBuildDirectory(), "webapps/examples");
+            File appDir = new File(System.getProperty("tomcat.test.basedir"), "webapps/examples");
             Context ctx = tomcat.addWebapp(null, "/examples",
                     appDir.getAbsolutePath());
             setUseCookies(clientShouldUseCookies);
             ctx.setCookies(serverShouldUseCookies);
-            ctx.addApplicationListener(new ApplicationListener(
-                    WsContextListener.class.getName(), false));
+            ctx.addApplicationListener(WsContextListener.class.getName());
 
             TesterMapRealm realm = new TesterMapRealm();
             realm.addUser("tomcat", "tomcat");
@@ -657,9 +655,6 @@ public class TestFormAuthenticator extends TomcatBaseTest {
             ctx.setRealm(realm);
 
             tomcat.start();
-
-            // perhaps this does not work until tomcat has started?
-            ctx.setSessionTimeout(TIMEOUT_MINS);
 
             // Valve pipeline is only established after tomcat starts
             Valve[] valves = ctx.getPipeline().getValves();
@@ -702,19 +697,19 @@ public class TestFormAuthenticator extends TomcatBaseTest {
                     "", System.getProperty("java.io.tmpdir"));
             Tomcat.addServlet(ctx, "SelectedMethods",
                     new SelectedMethodsServlet());
-            ctx.addServletMapping("/test", "SelectedMethods");
+            ctx.addServletMappingDecoded("/test", "SelectedMethods");
             // Login servlet just needs to respond "OK". Client will handle
             // creating a valid response. No need for a form.
             Tomcat.addServlet(ctx, "Login",
                     new TesterServlet());
-            ctx.addServletMapping("/login", "Login");
+            ctx.addServletMappingDecoded("/login", "Login");
 
             // Configure the security constraints
             SecurityConstraint constraint = new SecurityConstraint();
             SecurityCollection collection = new SecurityCollection();
             collection.setName("Protect PUT");
             collection.addMethod("PUT");
-            collection.addPattern("/test");
+            collection.addPatternDecoded("/test");
             constraint.addCollection(collection);
             constraint.addAuthRole("tomcat");
             ctx.addConstraint(constraint);
@@ -736,9 +731,6 @@ public class TestFormAuthenticator extends TomcatBaseTest {
 
             tomcat.start();
 
-            // perhaps this does not work until tomcat has started?
-            ctx.setSessionTimeout(TIMEOUT_MINS);
-
             // Valve pipeline is only established after tomcat starts
             Valve[] valves = ctx.getPipeline().getValves();
             for (Valve valve : valves) {
@@ -759,8 +751,8 @@ public class TestFormAuthenticator extends TomcatBaseTest {
             if (isResponse303()) {
                 return true;
             }
-            assertTrue(getResponseBody(), getResponseBody().contains("OK"));
-            assertFalse(getResponseBody().contains("FAIL"));
+            Assert.assertTrue(getResponseBody(), getResponseBody().contains("OK"));
+            Assert.assertFalse(getResponseBody().contains("FAIL"));
             return true;
         }
     }

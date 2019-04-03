@@ -32,19 +32,32 @@ public enum ActionCode {
     COMMIT,
 
     /**
+     * A serious error occurred from which it is not possible to recover safely.
+     * Further attempts to write to the response should be ignored and the
+     * connection needs to be closed as soon as possible. This can also be used
+     * to forcibly close a connection if an error occurs after the response has
+     * been committed.
+     */
+    CLOSE_NOW,
+
+    /**
      * A flush() operation originated by the client ( i.e. a flush() on the
      * servlet output stream or writer, called by a servlet ). Argument is the
      * Response.
      */
     CLIENT_FLUSH,
 
-    RESET,
-
     /**
      * Has the processor been placed into the error state? Note that the
      * response may not have an appropriate error code set.
      */
     IS_ERROR,
+
+    /**
+     * The processor may have been placed into an error state and some error
+     * states do not permit any further I/O. Is I/O currently allowed?
+     */
+    IS_IO_ALLOWED,
 
     /**
      * Hook called if swallowing request input should be disabled.
@@ -54,24 +67,24 @@ public enum ActionCode {
     DISABLE_SWALLOW_INPUT,
 
     /**
-     * Callback for lazy evaluation - extract the remote host address.
+     * Callback for lazy evaluation - extract the remote host name and address.
      */
     REQ_HOST_ATTRIBUTE,
 
     /**
-     * Callback for lazy evaluation - extract the remote host infos (address,
-     * name, port) and local address.
+     * Callback for lazy evaluation - extract the remote host address.
      */
     REQ_HOST_ADDR_ATTRIBUTE,
 
     /**
-     * Callback for lazy evaluation - extract the SSL-related attributes.
+     * Callback for lazy evaluation - extract the SSL-related attributes
+     * including the client certificate if present.
      */
     REQ_SSL_ATTRIBUTE,
 
     /**
-     * Callback for lazy evaluation - extract the SSL-certificate (including
-     * forcing a re-handshake if necessary)
+     * Force a TLS re-handshake and make the resulting client certificate (if
+     * any) available as a request attribute.
      */
     REQ_SSL_CERTIFICATE,
 
@@ -101,38 +114,18 @@ public enum ActionCode {
     REQ_SET_BODY_REPLAY,
 
     /**
-     * Callback for begin Comet processing
-     */
-    COMET_BEGIN,
-
-    /**
-     * Callback for end Comet processing
-     */
-    COMET_END,
-
-    /**
-     * Callback for getting the amount of available bytes
+     * Callback for getting the amount of available bytes.
      */
     AVAILABLE,
 
     /**
-     * Callback for an asynchronous close of the Comet event
-     */
-    COMET_CLOSE,
-
-    /**
-     * Callback for setting the timeout asynchronously
-     */
-    COMET_SETTIMEOUT,
-
-    /**
-     * Callback for an async request
+     * Callback for an async request.
      */
     ASYNC_START,
 
     /**
      * Callback for an async call to
-     * {@link javax.servlet.AsyncContext#dispatch()}
+     * {@link javax.servlet.AsyncContext#dispatch()}.
      */
     ASYNC_DISPATCH,
 
@@ -144,23 +137,23 @@ public enum ActionCode {
 
     /**
      * Callback for an async call to
-     * {@link javax.servlet.AsyncContext#start(Runnable)}
+     * {@link javax.servlet.AsyncContext#start(Runnable)}.
      */
     ASYNC_RUN,
 
     /**
      * Callback for an async call to
-     * {@link javax.servlet.AsyncContext#complete()}
+     * {@link javax.servlet.AsyncContext#complete()}.
      */
     ASYNC_COMPLETE,
 
     /**
-     * Callback to trigger the processing of an async timeout
+     * Callback to trigger the processing of an async timeout.
      */
     ASYNC_TIMEOUT,
 
     /**
-     * Callback to trigger the error processing
+     * Callback to trigger the error processing.
      */
     ASYNC_ERROR,
 
@@ -171,29 +164,40 @@ public enum ActionCode {
     ASYNC_SETTIMEOUT,
 
     /**
-     * Callback to determine if async processing is in progress
+     * Callback to determine if async processing is in progress.
      */
     ASYNC_IS_ASYNC,
 
     /**
-     * Callback to determine if async dispatch is in progress
+     * Callback to determine if async dispatch is in progress.
      */
     ASYNC_IS_STARTED,
 
     /**
-     * Callback to determine if async dispatch is in progress
+     * Call back to determine if async complete is in progress.
+     */
+    ASYNC_IS_COMPLETING,
+
+    /**
+     * Callback to determine if async dispatch is in progress.
      */
     ASYNC_IS_DISPATCHING,
 
     /**
-     * Callback to determine if async is timing out
+     * Callback to determine if async is timing out.
      */
     ASYNC_IS_TIMINGOUT,
 
     /**
-    * Callback to determine if async is in error
+    * Callback to determine if async is in error.
     */
     ASYNC_IS_ERROR,
+
+    /**
+     * Callback to trigger post processing. Typically only used during error
+     * handling to trigger essential processing that otherwise would be skipped.
+     */
+    ASYNC_POST_PROCESS,
 
     /**
      * Callback to trigger the HTTP upgrade process.
@@ -202,13 +206,15 @@ public enum ActionCode {
 
     /**
      * Indicator that Servlet is interested in being
-     * notified when data is available to be read
+     * notified when data is available to be read.
      */
     NB_READ_INTEREST,
 
     /**
-     *Indicator that the Servlet is interested
-     *in being notified when it can write data
+     * Used with non-blocking writes to determine if a write is currently
+     * allowed (sets passed parameter to <code>true</code>) or not (sets passed
+     * parameter to <code>false</code>). If a write is not allowed then callback
+     * will be triggered at some future point when write becomes possible again.
      */
     NB_WRITE_INTEREST,
 
@@ -235,5 +241,29 @@ public enum ActionCode {
      * when the non-blocking listeners are configured on a thread where the
      * processing wasn't triggered by a read or write event on the socket.
      */
-    DISPATCH_EXECUTE
+    DISPATCH_EXECUTE,
+
+    /**
+     * Is server push supported and allowed for the current request?
+     */
+    IS_PUSH_SUPPORTED,
+
+    /**
+     * Push a request on behalf of the client of the current request.
+     */
+    PUSH_REQUEST,
+
+    /**
+     * Are the request trailer fields ready to be read? Note that this returns
+     * true if it is known that request trailer fields are not supported so an
+     * empty collection of trailers can then be read.
+     */
+    IS_TRAILER_FIELDS_READY,
+
+    /**
+     * Are HTTP trailer fields supported for the current response? Note that
+     * once an HTTP/1.1 response has been committed, it will no longer support
+     * trailer fields.
+     */
+    IS_TRAILER_FIELDS_SUPPORTED
 }

@@ -21,35 +21,33 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.cert.Certificate;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.jar.Manifest;
-
-import org.apache.catalina.WebResourceRoot;
 
 public abstract class AbstractArchiveResource extends AbstractResource {
 
-    private final String base;
+    private final AbstractArchiveResourceSet archiveResourceSet;
     private final String baseUrl;
     private final JarEntry resource;
-    private final Manifest manifest;
+    private final String codeBaseUrl;
     private final String name;
     private boolean readCerts = false;
     private Certificate[] certificates;
 
-    protected AbstractArchiveResource(WebResourceRoot root, String webAppPath,
-            String base, String baseUrl, JarEntry jarEntry,
-            String internalPath, Manifest manifest) {
-        super(root, webAppPath);
-        this.base = base;
+    protected AbstractArchiveResource(AbstractArchiveResourceSet archiveResourceSet,
+            String webAppPath, String baseUrl, JarEntry jarEntry, String codeBaseUrl) {
+        super(archiveResourceSet.getRoot(), webAppPath);
+        this.archiveResourceSet = archiveResourceSet;
         this.baseUrl = baseUrl;
         this.resource = jarEntry;
-        this.manifest = manifest;
+        this.codeBaseUrl = codeBaseUrl;
 
         String resourceName = resource.getName();
         if (resourceName.charAt(resourceName.length() - 1) == '/') {
             resourceName = resourceName.substring(0, resourceName.length() - 1);
         }
+        String internalPath = archiveResourceSet.getInternalPath();
         if (internalPath.length() > 0 && resourceName.equals(
                 internalPath.subSequence(1, internalPath.length()))) {
             name = "";
@@ -63,8 +61,12 @@ public abstract class AbstractArchiveResource extends AbstractResource {
         }
     }
 
+    protected AbstractArchiveResourceSet getArchiveResourceSet() {
+        return archiveResourceSet;
+    }
+
     protected final String getBase() {
-        return base;
+        return archiveResourceSet.getBase();
     }
 
     protected final String getBaseUrl() {
@@ -112,6 +114,9 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     @Override
     public long getContentLength() {
+        if (isDirectory()) {
+            return -1;
+        }
         return resource.getSize();
     }
 
@@ -132,12 +137,24 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     @Override
     public URL getURL() {
+        String url = baseUrl + resource.getName();
         try {
-            return new URL(baseUrl + "!/" + resource.getName());
+            return new URL(url);
         } catch (MalformedURLException e) {
             if (getLog().isDebugEnabled()) {
-                getLog().debug(sm.getString("fileResource.getUrlFail",
-                        resource.getName(), baseUrl), e);
+                getLog().debug(sm.getString("fileResource.getUrlFail", url), e);
+            }
+            return null;
+        }
+    }
+
+    @Override
+    public URL getCodeBase() {
+        try {
+            return new URL(codeBaseUrl);
+        } catch (MalformedURLException e) {
+            if (getLog().isDebugEnabled()) {
+                getLog().debug(sm.getString("fileResource.getUrlFail", codeBaseUrl), e);
             }
             return null;
         }
@@ -154,11 +171,20 @@ public abstract class AbstractArchiveResource extends AbstractResource {
                     Long.valueOf(len)));
         }
 
+        if (len < 0) {
+            // Content is not applicable here (e.g. is a directory)
+            return null;
+        }
+
         int size = (int) len;
         byte[] result = new byte[size];
 
         int pos = 0;
         try (JarInputStreamWrapper jisw = getJarInputStreamWrapper()) {
+            if (jisw == null) {
+                // An error occurred, don't return corrupted content
+                return null;
+            }
             while (pos < size) {
                 int n = jisw.read(result, pos, size - pos);
                 if (n < 0) {
@@ -174,6 +200,8 @@ public abstract class AbstractArchiveResource extends AbstractResource {
                 getLog().debug(sm.getString("abstractResource.getContentFail",
                         getWebappPath()), ioe);
             }
+            // Don't return corrupted content
+            return null;
         }
 
         return result;
@@ -191,25 +219,33 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     @Override
     public Manifest getManifest() {
-        return manifest;
+        return archiveResourceSet.getManifest();
     }
 
     @Override
     protected final InputStream doGetInputStream() {
+        if (isDirectory()) {
+            return null;
+        }
         return getJarInputStreamWrapper();
     }
 
     protected abstract JarInputStreamWrapper getJarInputStreamWrapper();
 
+    /**
+     * This wrapper assumes that the InputStream was created from a JarFile
+     * obtained from a call to getArchiveResourceSet().openJarFile(). If this is
+     * not the case then the usage counting in AbstractArchiveResourceSet will
+     * break and the JarFile may be unexpectedly closed.
+     */
     protected class JarInputStreamWrapper extends InputStream {
 
-        private final JarFile jarFile;
         private final JarEntry jarEntry;
         private final InputStream is;
+        private final AtomicBoolean closed = new AtomicBoolean(false);
 
 
-        public JarInputStreamWrapper(JarFile jarFile, JarEntry jarEntry, InputStream is) {
-            this.jarFile = jarFile;
+        public JarInputStreamWrapper(JarEntry jarEntry, InputStream is) {
             this.jarEntry = jarEntry;
             this.is = is;
         }
@@ -247,9 +283,11 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
         @Override
         public void close() throws IOException {
-            // Closing the JarFile releases the file lock on the JAR and also
-            // closes all input streams created from the JarFile.
-            jarFile.close();
+            if (closed.compareAndSet(false, true)) {
+                // Must only call this once else the usage counting will break
+                archiveResourceSet.closeJarFile();
+            }
+            is.close();
         }
 
 

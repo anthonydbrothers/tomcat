@@ -31,23 +31,23 @@
 
   <!-- Defined parameters (overrideable) -->
   <xsl:param    name="home-name"           select="'The Tomcat Project'"/>
-  <xsl:param    name="home-href"           select="'http://tomcat.apache.org/'"/>
+  <xsl:param    name="home-href"           select="'https://tomcat.apache.org/'"/>
   <xsl:param    name="home-logo"           select="'/images/tomcat.png'"/>
   <xsl:param    name="home-stylesheet"     select="'/images/docs-stylesheet.css'"/>
-  <xsl:param    name="apache-logo"         select="'/images/asf-feather.png'"/>
+  <xsl:param    name="apache-logo"         select="'/images/asf-logo.svg'"/>
   <xsl:param    name="subdir"              select="''"/>
   <xsl:param    name="relative-path"       select="'.'"/>
-  <xsl:param    name="version"             select="'8.0.x'"/>
-  <xsl:param    name="majorversion"        select="'8'"/>
-  <xsl:param    name="majorminorversion"   select="'8.0'"/>
+  <xsl:param    name="version"             select="'9.0.x'"/>
+  <xsl:param    name="majorversion"        select="'9'"/>
+  <xsl:param    name="majorminorversion"   select="'9.0'"/>
   <xsl:param    name="build-date"          select="'MMM d yyyy'"/>
-  <xsl:param    name="build-date-iso-8601" select="'yyyy-dd-MM'"/>
+  <xsl:param    name="build-date-iso-8601" select="'yyyy-MM-dd'"/>
   <xsl:param    name="year"                select="'yyyy'"/>
-  <xsl:param    name="buglink"             select="'http://issues.apache.org/bugzilla/show_bug.cgi?id='"/>
-  <xsl:param    name="revlink"             select="'http://svn.apache.org/viewvc?view=rev&amp;rev='"/>
-  <xsl:param    name="doclink"             select="'http://tomcat.apache.org/tomcat-8.0-doc'"/>
-  <xsl:param    name="sylink"              select="'http://tomcat.apache.org/security-8.html'"/>
-  <xsl:param    name="dllink"              select="'http://tomcat.apache.org/download-80.cgi'"/>
+  <xsl:param    name="buglink"             select="'https://bz.apache.org/bugzilla/show_bug.cgi?id='"/>
+  <xsl:param    name="revlink"             select="'https://svn.apache.org/viewvc?view=rev&amp;rev='"/>
+  <xsl:param    name="doclink"             select="'https://tomcat.apache.org/tomcat-9.0-doc'"/>
+  <xsl:param    name="sylink"              select="'https://tomcat.apache.org/security-9.html'"/>
+  <xsl:param    name="dllink"              select="'https://tomcat.apache.org/download-90.cgi'"/>
   <xsl:param    name="sitedir"             select="''"/>
   <xsl:param    name="filename"            select="'-'"/>
 
@@ -115,7 +115,7 @@
       document.addEventListener("DOMContentLoaded", (function() {
         var commentsDiv = document.getElementById("comments_thread");
         var commentsShortname = "tomcat";
-        var commentsIdentifier = "http://tomcat.apache.org/" +
+        var commentsIdentifier = "https://tomcat.apache.org/" +
           thisScript.getAttribute("data-comments-identifier") + ".html";
 
         (function(w, d) {
@@ -157,7 +157,7 @@
           <xsl:value-of select="$relative-path"/><xsl:value-of select="$apache-logo"/>
         </xsl:variable>
         <div class="asfLogo noPrint">
-          <a href="http://www.apache.org/" target="_blank"><img src="{$src}" alt="The Apache Software Foundation" style="width: 266px; height: 83px;"/></a>
+          <a href="https://www.apache.org/" target="_blank"><img src="{$src}" alt="The Apache Software Foundation" style="width: 266px; height: 83px;"/></a>
         </div>
         <h1><xsl:value-of select="$project/title"/></h1>
         <div class="versionInfo">
@@ -195,12 +195,12 @@
 
                 <div class="text">
                   <p class="notice">
-                    <strong>Notice: </strong>This comments section collects your suggestions
+                    <strong>Notice:</strong> This comments section collects your suggestions
                     on improving documentation for Apache Tomcat.<br/><br/>
                     If you have trouble and need help, read
-                    <a href="http://tomcat.apache.org/findhelp.html">Find Help</a> page
+                    <a href="https://tomcat.apache.org/findhelp.html">Find Help</a> page
                     and ask your question on the tomcat-users
-                    <a href="http://tomcat.apache.org/lists.html">mailing list</a>.
+                    <a href="https://tomcat.apache.org/lists.html">mailing list</a>.
                     Do not ask such questions here. This is not a Q&amp;A section.<br/><br/>
                     The Apache Comments System is explained <a href="{$commentslink}">here</a>.
                     Comments may be removed by our moderators if they are either
@@ -292,9 +292,9 @@
         </xsl:when>
         <xsl:otherwise>
           <xsl:if test="
-              count(//*[(local-name()='section' or local-name()='subsection') and @name=current()/@name]) &gt; 1
+              count(//*[self::section or self::subsection][@name=current()/@name]) &gt; 1
               ">
-            <xsl:value-of select="concat(ancestor::section/@name, '/')"/>
+            <xsl:value-of select="concat(parent::*[self::section or self::subsection]/@name, '/')"/>
           </xsl:if>
           <xsl:value-of select="@name"/>
         </xsl:otherwise>
@@ -333,9 +333,9 @@
         </xsl:when>
         <xsl:otherwise>
           <xsl:if test="local-name()='subsection' and
-              count(//*[(local-name()='section' or local-name()='subsection') and @name=current()/@name]) &gt; 1
+              count(//*[self::section or self::subsection][@name=current()/@name]) &gt; 1
               ">
-            <xsl:value-of select="concat(ancestor::section/@name, '/')"/>
+            <xsl:value-of select="concat(parent::*[self::section or self::subsection]/@name, '/')"/>
           </xsl:if>
           <xsl:value-of select="@name"/>
         </xsl:otherwise>
@@ -363,19 +363,6 @@
     </pre>
   </div>
   </xsl:template>
-
-
-  <!-- Process a wrapped source code example - indent -->
-  <xsl:template match="source//indent">
-    <div><xsl:apply-templates /></div>
-  </xsl:template>
-
-
-  <!-- Process a wrapped source code example - outdent -->
-  <xsl:template match="source//outdent">
-    <p><xsl:apply-templates /></p>
-  </xsl:template>
-
 
   <!-- Process an attributes list with nested attribute elements -->
   <xsl:template match="attributes">

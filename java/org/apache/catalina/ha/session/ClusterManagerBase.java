@@ -18,12 +18,12 @@ package org.apache.catalina.ha.session;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.regex.Pattern;
 
 import org.apache.catalina.Cluster;
 import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Loader;
+import org.apache.catalina.SessionIdGenerator;
 import org.apache.catalina.Valve;
 import org.apache.catalina.ha.CatalinaCluster;
 import org.apache.catalina.ha.ClusterManager;
@@ -35,7 +35,7 @@ import org.apache.juli.logging.LogFactory;
 
 public abstract class ClusterManagerBase extends ManagerBase implements ClusterManager {
 
-    private final Log log = LogFactory.getLog(ClusterManagerBase.class);
+    private final Log log = LogFactory.getLog(ClusterManagerBase.class); // must not be static
 
     /**
      * A reference to the cluster
@@ -48,27 +48,15 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
     private boolean notifyListenersOnReplication = true;
 
     /**
-     * The pattern used for including session attributes to
-     *  replication, e.g. <code>^(userName|sessionHistory)$</code>.
-     *  If not set, all session attributes will be eligible for replication.
-     */
-    private String sessionAttributeFilter = null;
-
-    /**
-     * The compiled pattern used for including session attributes to
-     * replication, e.g. <code>^(userName|sessionHistory)$</code>.
-     * If not set, all session attributes will be eligible for replication.
-     */
-    private Pattern sessionAttributePattern = null;
-
-    /**
      * cached replication valve cluster container!
      */
     private volatile ReplicationValve replicationValve = null ;
 
-    /*
-     * @see org.apache.catalina.ha.ClusterManager#getCluster()
+    /**
+     * send all actions of session attributes.
      */
+    private boolean recordAllActions = false;
+
     @Override
     public CatalinaCluster getCluster() {
         return cluster;
@@ -88,48 +76,15 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
         this.notifyListenersOnReplication = notifyListenersOnReplication;
     }
 
-    /**
-     * Return the string pattern used for including session attributes
-     * to replication.
-     *
-     * @return the sessionAttributeFilter
-     */
-    public String getSessionAttributeFilter() {
-        return sessionAttributeFilter;
+
+    public boolean isRecordAllActions() {
+        return recordAllActions;
     }
 
-    /**
-     * Set the pattern used for including session attributes to replication.
-     * If not set, all session attributes will be eligible for replication.
-     * <p>
-     * E.g. <code>^(userName|sessionHistory)$</code>
-     * </p>
-     *
-     * @param sessionAttributeFilter
-     *            the filter name pattern to set
-     */
-    public void setSessionAttributeFilter(String sessionAttributeFilter) {
-        if (sessionAttributeFilter == null
-            || sessionAttributeFilter.trim().equals("")) {
-            this.sessionAttributeFilter = null;
-            sessionAttributePattern = null;
-        } else {
-            this.sessionAttributeFilter = sessionAttributeFilter;
-            sessionAttributePattern = Pattern.compile(sessionAttributeFilter);
-        }
+    public void setRecordAllActions(boolean recordAllActions) {
+        this.recordAllActions = recordAllActions;
     }
 
-    /**
-     * Check whether the given session attribute should be distributed
-     *
-     * @return true if the attribute should be distributed
-     */
-    public boolean willAttributeDistribute(String name) {
-        if (sessionAttributePattern == null) {
-            return true;
-        }
-        return sessionAttributePattern.matcher(name).matches();
-    }
 
     public static ClassLoader[] getClassLoaders(Context context) {
         ClassLoader tccl = Thread.currentThread().getContextClassLoader();
@@ -153,14 +108,6 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
         return getClassLoaders(getContext());
     }
 
-    /**
-     * Open Stream and use correct ClassLoader (Container) Switch
-     * ThreadClassLoader
-     *
-     * @param data
-     * @return The object input stream
-     * @throws IOException
-     */
     @Override
     public ReplicationStream getReplicationStream(byte[] data) throws IOException {
         return getReplicationStream(data,0,data.length);
@@ -184,6 +131,10 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
         // NOOP
     }
 
+    /**
+     * {@link org.apache.catalina.Manager} implementations that also implement
+     * {@link ClusterManager} do not support local session persistence.
+     */
     @Override
     public void unload() {
         // NOOP
@@ -192,14 +143,25 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
     protected void clone(ClusterManagerBase copy) {
         copy.setName("Clone-from-" + getName());
         copy.setMaxActiveSessions(getMaxActiveSessions());
-        copy.setMaxInactiveInterval(getMaxInactiveInterval());
-        copy.setSessionIdLength(getSessionIdLength());
         copy.setProcessExpiresFrequency(getProcessExpiresFrequency());
         copy.setNotifyListenersOnReplication(isNotifyListenersOnReplication());
-        copy.setSessionAttributeFilter(getSessionAttributeFilter());
+        copy.setSessionAttributeNameFilter(getSessionAttributeNameFilter());
+        copy.setSessionAttributeValueClassNameFilter(getSessionAttributeValueClassNameFilter());
+        copy.setWarnOnSessionAttributeFilterFailure(getWarnOnSessionAttributeFilterFailure());
         copy.setSecureRandomClass(getSecureRandomClass());
         copy.setSecureRandomProvider(getSecureRandomProvider());
         copy.setSecureRandomAlgorithm(getSecureRandomAlgorithm());
+        if (getSessionIdGenerator() != null) {
+            try {
+                SessionIdGenerator copyIdGenerator = sessionIdGeneratorClass.getConstructor().newInstance();
+                copyIdGenerator.setSessionIdLength(getSessionIdGenerator().getSessionIdLength());
+                copyIdGenerator.setJvmRoute(getSessionIdGenerator().getJvmRoute());
+                copy.setSessionIdGenerator(copyIdGenerator);
+            } catch (ReflectiveOperationException e) {
+                // Ignore
+            }
+        }
+        copy.setRecordAllActions(isRecordAllActions());
     }
 
     /**

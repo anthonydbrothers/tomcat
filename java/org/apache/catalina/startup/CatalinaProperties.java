@@ -18,10 +18,14 @@ package org.apache.catalina.startup;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.Enumeration;
 import java.util.Properties;
+
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 
 
 /**
@@ -31,8 +35,7 @@ import java.util.Properties;
  */
 public class CatalinaProperties {
 
-    private static final org.apache.juli.logging.Log log=
-        org.apache.juli.logging.LogFactory.getLog( CatalinaProperties.class );
+    private static final Log log = LogFactory.getLog(CatalinaProperties.class);
 
     private static Properties properties = null;
 
@@ -43,7 +46,8 @@ public class CatalinaProperties {
 
 
     /**
-     * Return specified property value.
+     * @param name The property name
+     * @return specified property value
      */
     public static String getProperty(String name) {
         return properties.getProperty(name);
@@ -56,12 +60,17 @@ public class CatalinaProperties {
     private static void loadProperties() {
 
         InputStream is = null;
-        Throwable error = null;
+        String fileName = "catalina.properties";
 
         try {
-            String configUrl = getConfigUrl();
+            String configUrl = System.getProperty("catalina.config");
             if (configUrl != null) {
-                is = (new URL(configUrl)).openStream();
+                if (configUrl.indexOf('/') == -1) {
+                    // No '/'. Must be a file name rather than a URL
+                    fileName = configUrl;
+                } else {
+                    is = (new URL(configUrl)).openStream();
+                }
             }
         } catch (Throwable t) {
             handleThrowable(t);
@@ -71,7 +80,7 @@ public class CatalinaProperties {
             try {
                 File home = new File(Bootstrap.getCatalinaBase());
                 File conf = new File(home, "conf");
-                File propsFile = new File(conf, "catalina.properties");
+                File propsFile = new File(conf, fileName);
                 is = new FileInputStream(propsFile);
             } catch (Throwable t) {
                 handleThrowable(t);
@@ -91,18 +100,23 @@ public class CatalinaProperties {
             try {
                 properties = new Properties();
                 properties.load(is);
-                is.close();
             } catch (Throwable t) {
                 handleThrowable(t);
-                error = t;
+                log.warn(t);
+            } finally {
+                try {
+                    is.close();
+                } catch (IOException ioe) {
+                    log.warn("Could not close catalina properties file", ioe);
+                }
             }
         }
 
-        if ((is == null) || (error != null)) {
+        if ((is == null)) {
             // Do something
-            log.warn("Failed to load catalina.properties", error);
+            log.warn("Failed to load catalina properties file");
             // That's fine - we have reasonable defaults.
-            properties=new Properties();
+            properties = new Properties();
         }
 
         // Register the properties as system properties
@@ -114,14 +128,6 @@ public class CatalinaProperties {
                 System.setProperty(name, value);
             }
         }
-    }
-
-
-    /**
-     * Get the value of the configuration URL.
-     */
-    private static String getConfigUrl() {
-        return System.getProperty("catalina.config");
     }
 
 

@@ -20,9 +20,9 @@ package org.apache.tomcat.util.bcel.classfile;
 public class ArrayElementValue extends ElementValue
 {
     // For array types, this is the array
-    private ElementValue[] evalues;
+    private final ElementValue[] evalues;
 
-    public ArrayElementValue(int type, ElementValue[] datums, ConstantPool cpool)
+    ArrayElementValue(final int type, final ElementValue[] datums, final ConstantPool cpool)
     {
         super(type, cpool);
         if (type != ARRAY) {
@@ -35,7 +35,7 @@ public class ArrayElementValue extends ElementValue
     @Override
     public String stringifyValue()
     {
-        StringBuilder sb = new StringBuilder();
+        final StringBuilder sb = new StringBuilder();
         sb.append("[");
         for (int i = 0; i < evalues.length; i++)
         {

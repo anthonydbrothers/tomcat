@@ -25,17 +25,23 @@ import java.net.MalformedURLException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.rmi.AlreadyBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.rmi.server.RMIClientSocketFactory;
 import java.rmi.server.RMIServerSocketFactory;
 import java.util.HashMap;
+import java.util.Map;
 
-import javax.management.MBeanServer;
 import javax.management.remote.JMXConnectorServer;
-import javax.management.remote.JMXConnectorServerFactory;
 import javax.management.remote.JMXServiceURL;
 import javax.management.remote.rmi.RMIConnectorServer;
+import javax.management.remote.rmi.RMIJRMPServerImpl;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLServerSocketFactory;
+import javax.net.ssl.SSLSessionContext;
 import javax.rmi.ssl.SslRMIClientSocketFactory;
 import javax.rmi.ssl.SslRMIServerSocketFactory;
 
@@ -44,6 +50,9 @@ import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.net.SSLHostConfig;
+import org.apache.tomcat.util.net.SSLHostConfigCertificate;
+import org.apache.tomcat.util.net.jsse.JSSEUtil;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -53,31 +62,27 @@ import org.apache.tomcat.util.res.StringManager;
  * the listener. The remainder of the configuration is via the standard system
  * properties for configuring JMX.
  */
-public class JmxRemoteLifecycleListener implements LifecycleListener {
+public class JmxRemoteLifecycleListener extends SSLHostConfig implements LifecycleListener {
 
-    private static final Log log =
-        LogFactory.getLog(JmxRemoteLifecycleListener.class);
+    private static final long serialVersionUID = 1L;
 
-    /**
-     * The string resources for this package.
-     */
+    private static final Log log = LogFactory.getLog(JmxRemoteLifecycleListener.class);
+
     protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+            StringManager.getManager(JmxRemoteLifecycleListener.class);
 
     protected String rmiBindAddress = null;
     protected int rmiRegistryPortPlatform = -1;
     protected int rmiServerPortPlatform = -1;
-    protected boolean rmiSSL = true;
-    protected String ciphers[] = null;
-    protected String protocols[] = null;
-    protected boolean clientAuth = true;
+    protected boolean rmiRegistrySSL = true;
+    protected boolean rmiServerSSL = true;
     protected boolean authenticate = true;
     protected String passwordFile = null;
     protected String loginModuleName = null;
     protected String accessFile = null;
     protected boolean useLocalPorts = false;
 
-    protected JMXConnectorServer csPlatform = null;
+    protected transient JMXConnectorServer csPlatform = null;
 
     /**
      * Get the inet address on which the Platform RMI server is exported.
@@ -150,101 +155,243 @@ public class JmxRemoteLifecycleListener implements LifecycleListener {
         this.useLocalPorts = useLocalPorts;
     }
 
-    private void init() {
+    /**
+     * @return the rmiRegistrySSL
+     */
+    public boolean isRmiRegistrySSL() {
+        return rmiRegistrySSL;
+    }
+
+    /**
+     * @param rmiRegistrySSL the rmiRegistrySSL to set
+     */
+    public void setRmiRegistrySSL(boolean rmiRegistrySSL) {
+        this.rmiRegistrySSL = rmiRegistrySSL;
+    }
+
+    /**
+     * @return the rmiServerSSL
+     */
+    public boolean isRmiServerSSL() {
+        return rmiServerSSL;
+    }
+
+    /**
+     * @param rmiServerSSL the rmiServerSSL to set
+     */
+    public void setRmiServerSSL(boolean rmiServerSSL) {
+        this.rmiServerSSL = rmiServerSSL;
+    }
+
+    /**
+     * @return the authenticate
+     */
+    public boolean isAuthenticate() {
+        return authenticate;
+    }
+
+    /**
+     * @param authenticate the authenticate to set
+     */
+    public void setAuthenticate(boolean authenticate) {
+        this.authenticate = authenticate;
+    }
+
+    /**
+     * @return the passwordFile
+     */
+    public String getPasswordFile() {
+        return passwordFile;
+    }
+
+    /**
+     * @param passwordFile the passwordFile to set
+     */
+    public void setPasswordFile(String passwordFile) {
+        this.passwordFile = passwordFile;
+    }
+
+    /**
+     * @return the loginModuleName
+     */
+    public String getLoginModuleName() {
+        return loginModuleName;
+    }
+
+    /**
+     * @param loginModuleName the loginModuleName to set
+     */
+    public void setLoginModuleName(String loginModuleName) {
+        this.loginModuleName = loginModuleName;
+    }
+
+    /**
+     * @return the accessFile
+     */
+    public String getAccessFile() {
+        return accessFile;
+    }
+
+    /**
+     * @param accessFile the accessFile to set
+     */
+    public void setAccessFile(String accessFile) {
+        this.accessFile = accessFile;
+    }
+
+    protected void init() {
         // Get all the other parameters required from the standard system
         // properties. Only need to get the parameters that affect the creation
         // of the server port.
-        String rmiSSLValue = System.getProperty(
-                "com.sun.management.jmxremote.ssl", "true");
-        rmiSSL = Boolean.parseBoolean(rmiSSLValue);
+        String rmiRegistrySSLValue = System.getProperty("com.sun.management.jmxremote.registry.ssl");
+        if (rmiRegistrySSLValue != null) {
+            setRmiRegistrySSL(Boolean.parseBoolean(rmiRegistrySSLValue));
+        }
 
-        String protocolsValue = System.getProperty(
-                "com.sun.management.jmxremote.ssl.enabled.protocols");
+        String rmiServerSSLValue = System.getProperty("com.sun.management.jmxremote.ssl");
+        if (rmiServerSSLValue != null) {
+            setRmiServerSSL(Boolean.parseBoolean(rmiServerSSLValue));
+        }
+
+        String protocolsValue = System.getProperty("com.sun.management.jmxremote.ssl.enabled.protocols");
         if (protocolsValue != null) {
-            protocols = protocolsValue.split(",");
+            setEnabledProtocols(protocolsValue.split(","));
         }
 
-        String ciphersValue = System.getProperty(
-                "com.sun.management.jmxremote.ssl.enabled.cipher.suites");
+        String ciphersValue = System.getProperty("com.sun.management.jmxremote.ssl.enabled.cipher.suites");
         if (ciphersValue != null) {
-            ciphers = ciphersValue.split(",");
+            setCiphers(ciphersValue);
         }
 
-        String clientAuthValue = System.getProperty(
-            "com.sun.management.jmxremote.ssl.need.client.auth", "true");
-        clientAuth = Boolean.parseBoolean(clientAuthValue);
+        String clientAuthValue = System.getProperty("com.sun.management.jmxremote.ssl.need.client.auth");
+        if (clientAuthValue != null) {
+            setCertificateVerification(clientAuthValue);
+        }
 
-        String authenticateValue = System.getProperty(
-                "com.sun.management.jmxremote.authenticate", "true");
-        authenticate = Boolean.parseBoolean(authenticateValue);
+        String authenticateValue = System.getProperty("com.sun.management.jmxremote.authenticate");
+        if (authenticateValue != null) {
+            setAuthenticate(Boolean.parseBoolean(authenticateValue));
+        }
 
-        passwordFile = System.getProperty(
-                "com.sun.management.jmxremote.password.file",
-                "jmxremote.password");
+        String passwordFileValue = System.getProperty("com.sun.management.jmxremote.password.file");
+        if (passwordFileValue != null) {
+            setPasswordFile(passwordFileValue);
+        }
 
-        accessFile = System.getProperty(
-                "com.sun.management.jmxremote.access.file",
-                "jmxremote.access");
+        String accessFileValue = System.getProperty("com.sun.management.jmxremote.access.file");
+        if (accessFileValue != null) {
+            setAccessFile(accessFileValue);
+        }
 
-        loginModuleName = System.getProperty(
-                "com.sun.management.jmxremote.login.config");
+        String loginModuleNameValue = System.getProperty("com.sun.management.jmxremote.login.config");
+        if (loginModuleNameValue != null) {
+            setLoginModuleName(loginModuleNameValue);
+        }
     }
 
 
     @Override
     public void lifecycleEvent(LifecycleEvent event) {
         // When the server starts, configure JMX/RMI
-        if (Lifecycle.START_EVENT == event.getType()) {
-            // Configure using standard jmx system properties
+        if (Lifecycle.START_EVENT.equals(event.getType())) {
+
+            // Configure using standard JMX system properties
             init();
+
+            SSLContext sslContext = null;
+            // Create SSL context if properties were set to define a certificate
+            if (getCertificates().size() > 0) {
+                SSLHostConfigCertificate certificate = getCertificates().iterator().next();
+                // This can only support JSSE
+                JSSEUtil sslUtil = new JSSEUtil(certificate);
+                try {
+                    sslContext = javax.net.ssl.SSLContext.getInstance(getSslProtocol());
+                    setEnabledProtocols(sslUtil.getEnabledProtocols());
+                    setEnabledCiphers(sslUtil.getEnabledCiphers());
+                    sslContext.init(sslUtil.getKeyManagers(), sslUtil.getTrustManagers(), null);
+                    SSLSessionContext sessionContext = sslContext.getServerSessionContext();
+                    if (sessionContext != null) {
+                        sslUtil.configureSessionContext(sessionContext);
+                    }
+                } catch (Exception e) {
+                    log.error(sm.getString("jmxRemoteLifecycleListener.invalidSSLConfiguration"), e);
+                }
+            }
 
             // Prevent an attacker guessing the RMI object ID
             System.setProperty("java.rmi.server.randomIDs", "true");
 
             // Create the environment
-            HashMap<String,Object> env = new HashMap<>();
+            Map<String,Object> env = new HashMap<>();
 
-            RMIClientSocketFactory csf = null;
-            RMIServerSocketFactory ssf = null;
+            RMIClientSocketFactory registryCsf = null;
+            RMIServerSocketFactory registrySsf = null;
 
-            // Configure SSL for RMI connection if required
-            if (rmiSSL) {
-                if (rmiBindAddress != null) {
-                    throw new IllegalStateException(sm.getString(
-                            "jmxRemoteLifecycleListener.sslRmiBindAddress"));
+            RMIClientSocketFactory serverCsf = null;
+            RMIServerSocketFactory serverSsf = null;
+
+            // Configure registry socket factories
+            if (rmiRegistrySSL) {
+                registryCsf = new SslRMIClientSocketFactory();
+                if (rmiBindAddress == null) {
+                    registrySsf = new SslRMIServerSocketFactory(sslContext,
+                            getEnabledCiphers(), getEnabledProtocols(),
+                            getCertificateVerification() == CertificateVerification.REQUIRED);
+                } else {
+                    registrySsf = new SslRmiServerBindSocketFactory(sslContext,
+                            getEnabledCiphers(), getEnabledProtocols(),
+                            getCertificateVerification() == CertificateVerification.REQUIRED,
+                            rmiBindAddress);
                 }
-
-                csf = new SslRMIClientSocketFactory();
-                ssf = new SslRMIServerSocketFactory(ciphers, protocols,
-                            clientAuth);
+            } else {
+                if (rmiBindAddress != null) {
+                    registrySsf = new RmiServerBindSocketFactory(rmiBindAddress);
+                }
             }
 
-            // Force server bind address if required
-            if (rmiBindAddress != null) {
-                try {
-                    ssf = new RmiServerBindSocketFactory(
-                            InetAddress.getByName(rmiBindAddress));
-                } catch (UnknownHostException e) {
-                    log.error(sm.getString(
-                            "jmxRemoteLifecycleListener.invalidRmiBindAddress",
-                            rmiBindAddress), e);
+            // Configure server socket factories
+            if (rmiServerSSL) {
+                serverCsf = new SslRMIClientSocketFactory();
+                if (rmiBindAddress == null) {
+                    serverSsf = new SslRMIServerSocketFactory(sslContext,
+                            getEnabledCiphers(), getEnabledProtocols(),
+                            getCertificateVerification() == CertificateVerification.REQUIRED);
+                } else {
+                    serverSsf = new SslRmiServerBindSocketFactory(sslContext,
+                            getEnabledCiphers(), getEnabledProtocols(),
+                            getCertificateVerification() == CertificateVerification.REQUIRED,
+                            rmiBindAddress);
                 }
+            } else {
+                if (rmiBindAddress != null) {
+                    serverSsf = new RmiServerBindSocketFactory(rmiBindAddress);
+                }
+            }
+
+            // By default, the registry will pick an address to listen on.
+            // Setting this property overrides that and ensures it listens on
+            // the configured address.
+            if (rmiBindAddress != null) {
+                System.setProperty("java.rmi.server.hostname", rmiBindAddress);
             }
 
             // Force the use of local ports if required
             if (useLocalPorts) {
-                csf = new RmiClientLocalhostSocketFactory(csf);
+                registryCsf = new RmiClientLocalhostSocketFactory(registryCsf);
+                serverCsf = new RmiClientLocalhostSocketFactory(serverCsf);
             }
 
+            env.put("jmx.remote.rmi.server.credential.types", new String[] {
+                    String[].class.getName(),
+                    String.class.getName() });
+
             // Populate the env properties used to create the server
-            if (csf != null) {
-                env.put(RMIConnectorServer.RMI_CLIENT_SOCKET_FACTORY_ATTRIBUTE,
-                        csf);
-                env.put("com.sun.jndi.rmi.factory.socket", csf);
+            if (serverCsf != null) {
+                env.put(RMIConnectorServer.RMI_CLIENT_SOCKET_FACTORY_ATTRIBUTE, serverCsf);
+                env.put("com.sun.jndi.rmi.factory.socket", registryCsf);
             }
-            if (ssf != null) {
-                env.put(RMIConnectorServer.RMI_SERVER_SOCKET_FACTORY_ATTRIBUTE,
-                        ssf);
+            if (serverSsf != null) {
+                env.put(RMIConnectorServer.RMI_SERVER_SOCKET_FACTORY_ATTRIBUTE, serverSsf);
             }
 
             // Configure authentication
@@ -254,25 +401,27 @@ public class JmxRemoteLifecycleListener implements LifecycleListener {
                 env.put("jmx.remote.x.login.config", loginModuleName);
             }
 
-
             // Create the Platform server
             csPlatform = createServer("Platform", rmiBindAddress, rmiRegistryPortPlatform,
-                    rmiServerPortPlatform, env, csf, ssf,
-                    ManagementFactory.getPlatformMBeanServer());
+                    rmiServerPortPlatform, env, registryCsf, registrySsf, serverCsf, serverSsf);
 
-        } else if (Lifecycle.STOP_EVENT == event.getType()) {
+        } else if (Lifecycle.STOP_EVENT.equals(event.getType())) {
             destroyServer("Platform", csPlatform);
         }
     }
 
+
     private JMXConnectorServer createServer(String serverName,
             String bindAddress, int theRmiRegistryPort, int theRmiServerPort,
-            HashMap<String,Object> theEnv, RMIClientSocketFactory csf,
-            RMIServerSocketFactory ssf, MBeanServer theMBeanServer) {
+            Map<String,Object> theEnv,
+            RMIClientSocketFactory registryCsf, RMIServerSocketFactory registrySsf,
+            RMIClientSocketFactory serverCsf, RMIServerSocketFactory serverSsf) {
 
         // Create the RMI registry
+        Registry registry;
         try {
-            LocateRegistry.createRegistry(theRmiRegistryPort, csf, ssf);
+            registry = LocateRegistry.createRegistry(
+                    theRmiRegistryPort, registryCsf, registrySsf);
         } catch (RemoteException e) {
             log.error(sm.getString(
                     "jmxRemoteLifecycleListener.createRegistryFailed",
@@ -284,43 +433,34 @@ public class JmxRemoteLifecycleListener implements LifecycleListener {
             bindAddress = "localhost";
         }
 
-        // Build the connection string with fixed ports
-        StringBuilder url = new StringBuilder();
-        url.append("service:jmx:rmi://");
-        url.append(bindAddress);
-        url.append(":");
-        url.append(theRmiServerPort);
-        url.append("/jndi/rmi://");
-        url.append(bindAddress);
-        url.append(":");
-        url.append(theRmiRegistryPort);
-        url.append("/jmxrmi");
+        String url = "service:jmx:rmi://" + bindAddress;
         JMXServiceURL serviceUrl;
         try {
-            serviceUrl = new JMXServiceURL(url.toString());
+            serviceUrl = new JMXServiceURL(url);
         } catch (MalformedURLException e) {
-            log.error(sm.getString(
-                    "jmxRemoteLifecycleListener.invalidURL",
-                    serverName, url.toString()), e);
+            log.error(sm.getString("jmxRemoteLifecycleListener.invalidURL", serverName, url), e);
             return null;
         }
 
-        // Start the JMX server with the connection string
-        JMXConnectorServer cs = null;
+        RMIConnectorServer cs = null;
         try {
-            cs = JMXConnectorServerFactory.newJMXConnectorServer(
-                    serviceUrl, theEnv, theMBeanServer);
+            RMIJRMPServerImpl server = new RMIJRMPServerImpl(
+                    rmiServerPortPlatform, serverCsf, serverSsf, theEnv);
+            cs = new RMIConnectorServer(serviceUrl, theEnv, server,
+                    ManagementFactory.getPlatformMBeanServer());
             cs.start();
+            registry.bind("jmxrmi", server.toStub());
             log.info(sm.getString("jmxRemoteLifecycleListener.start",
                     Integer.toString(theRmiRegistryPort),
                     Integer.toString(theRmiServerPort), serverName));
-        } catch (IOException e) {
+        } catch (IOException | AlreadyBoundException e) {
             log.error(sm.getString(
                     "jmxRemoteLifecycleListener.createServerFailed",
                     serverName), e);
         }
         return cs;
     }
+
 
     private void destroyServer(String serverName,
             JMXConnectorServer theConnectorServer) {
@@ -334,6 +474,7 @@ public class JmxRemoteLifecycleListener implements LifecycleListener {
             }
         }
     }
+
 
     public static class RmiClientLocalhostSocketFactory
             implements RMIClientSocketFactory, Serializable {
@@ -358,18 +499,94 @@ public class JmxRemoteLifecycleListener implements LifecycleListener {
         }
     }
 
-    public static class RmiServerBindSocketFactory
-            implements RMIServerSocketFactory {
+
+    public static class RmiServerBindSocketFactory implements RMIServerSocketFactory {
 
         private final InetAddress bindAddress;
 
-        public RmiServerBindSocketFactory(InetAddress address) {
-            bindAddress = address;
+        public RmiServerBindSocketFactory(String address) {
+            InetAddress bindAddress = null;
+            try {
+                bindAddress = InetAddress.getByName(address);
+            } catch (UnknownHostException e) {
+                log.error(sm.getString(
+                        "jmxRemoteLifecycleListener.invalidRmiBindAddress", address), e);
+                // bind address will be null which means any/all local addresses
+                // which should be safe
+            }
+            this.bindAddress = bindAddress;
         }
 
         @Override
         public ServerSocket createServerSocket(int port) throws IOException  {
             return new ServerSocket(port, 0, bindAddress);
+        }
+    }
+
+
+    public static class SslRmiServerBindSocketFactory extends SslRMIServerSocketFactory {
+
+        private final InetAddress bindAddress;
+        private final SSLContext sslContext;
+
+        public SslRmiServerBindSocketFactory(SSLContext sslContext, String[] enabledCipherSuites,
+                String[] enabledProtocols, boolean needClientAuth, String address) {
+            super(sslContext, enabledCipherSuites, enabledProtocols, needClientAuth);
+            this.sslContext = sslContext;
+            InetAddress bindAddress = null;
+            try {
+                bindAddress = InetAddress.getByName(address);
+            } catch (UnknownHostException e) {
+                log.error(sm.getString(
+                        "jmxRemoteLifecycleListener.invalidRmiBindAddress", address), e);
+                // bind address will be null which means any/all local addresses
+                // which should be safe
+            }
+            this.bindAddress = bindAddress;
+        }
+
+        @Override
+        public ServerSocket createServerSocket(int port) throws IOException {
+            SSLServerSocketFactory sslServerSocketFactory = (sslContext == null)
+                    ? (SSLServerSocketFactory) SSLServerSocketFactory.getDefault()
+                    : sslContext.getServerSocketFactory();
+            SSLServerSocket sslServerSocket =
+                    (SSLServerSocket) sslServerSocketFactory.createServerSocket(port, 0, bindAddress);
+            if (getEnabledCipherSuites() != null) {
+                sslServerSocket.setEnabledCipherSuites(getEnabledCipherSuites());
+            }
+            if (getEnabledProtocols() != null) {
+                sslServerSocket.setEnabledProtocols(getEnabledProtocols());
+            }
+            sslServerSocket.setNeedClientAuth(getNeedClientAuth());
+            return sslServerSocket;
+        }
+
+        // Super class defines hashCode() and equals(). Probably not used in
+        // Tomcat but for safety, override them here.
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = super.hashCode();
+            result = prime * result + ((bindAddress == null) ? 0 : bindAddress.hashCode());
+            return result;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj)
+                return true;
+            if (!super.equals(obj))
+                return false;
+            if (getClass() != obj.getClass())
+                return false;
+            SslRmiServerBindSocketFactory other = (SslRmiServerBindSocketFactory) obj;
+            if (bindAddress == null) {
+                if (other.bindAddress != null)
+                    return false;
+            } else if (!bindAddress.equals(other.bindAddress))
+                return false;
+            return true;
         }
     }
 }

@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.http;
 
 import java.io.IOException;
@@ -28,8 +27,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
-import static org.junit.Assert.assertEquals;
-
+import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -37,8 +35,8 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.tomcat.util.buf.ByteChunk;
 
 /**
- * Test case for {@link Cookies}. <b>Note</b> because of the use of <code>final
- * static</code> constants in {@link Cookies}, each of these tests must be
+ * Test case for {@link LegacyCookieProcessor}. <b>Note</b> because of the use of <code>final
+ * static</code> constants in {@link LegacyCookieProcessor}, each of these tests must be
  * executed in a new JVM instance. The tests have been place in separate classes
  * to facilitate this when running the unit tests via Ant.
  */
@@ -55,17 +53,16 @@ public class TestBug49158 extends CookiesBaseTest {
         ByteChunk res = new ByteChunk();
         getUrl("http://localhost:" + getPort() + "/"+path, res, headers);
         List<String> cookieHeaders = headers.get("Set-Cookie");
-        assertEquals("There should only be one Set-Cookie header in this test",
+        Assert.assertEquals("There should only be one Set-Cookie header in this test",
                 1, cookieHeaders.size());
     }
 
     public static void addServlets(Tomcat tomcat) {
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, path, new TestBug49158Servlet());
-        ctx.addServletMapping("/"+path, path);
+        ctx.addServletMappingDecoded("/"+path, path);
     }
 
     public static class TestBug49158Servlet extends HttpServlet {

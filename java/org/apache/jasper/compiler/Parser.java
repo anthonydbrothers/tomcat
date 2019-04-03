@@ -19,7 +19,6 @@ package org.apache.jasper.compiler;
 import java.io.CharArrayWriter;
 import java.io.FileNotFoundException;
 import java.util.Collection;
-import java.util.Iterator;
 
 import javax.servlet.jsp.tagext.TagAttributeInfo;
 import javax.servlet.jsp.tagext.TagFileInfo;
@@ -29,8 +28,8 @@ import javax.servlet.jsp.tagext.TagLibraryInfo;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
 import org.apache.jasper.util.UniqueAttributesImpl;
+import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.descriptor.tld.TldResourcePath;
-import org.apache.tomcat.util.scan.Jar;
 import org.xml.sax.Attributes;
 import org.xml.sax.helpers.AttributesImpl;
 
@@ -80,10 +79,10 @@ class Parser implements TagConstants {
     /* System property that controls if the strict white space rules are
      * applied.
      */
-    private static final boolean STRICT_WHITESPACE = Boolean.valueOf(
+    private static final boolean STRICT_WHITESPACE = Boolean.parseBoolean(
             System.getProperty(
                     "org.apache.jasper.compiler.Parser.STRICT_WHITESPACE",
-                    "true")).booleanValue();
+                    "true"));
     /**
      * The constructor
      */
@@ -104,14 +103,20 @@ class Parser implements TagConstants {
     /**
      * The main entry for Parser
      *
-     * @param pc
-     *            The ParseController, use for getting other objects in compiler
+     * @param pc  The ParseController, use for getting other objects in compiler
      *            and for parsing included pages
-     * @param reader
-     *            To read the page
-     * @param parent
-     *            The parent node to this page, null for top level page
+     * @param reader To read the page
+     * @param parent The parent node to this page, null for top level page
+     * @param isTagFile Is the page being parsed a tag file?
+     * @param directivesOnly Should only directives be parsed?
+     * @param jar JAR, if any, that this page was loaded from
+     * @param pageEnc The encoding of the source
+     * @param jspConfigPageEnc The encoding for the page
+     * @param isDefaultPageEncoding Is the page encoding the default?
+     * @param isBomPresent Is a BOM present in the source
      * @return list of nodes representing the parsed page
+     *
+     * @throws JasperException If an error occurs during parsing
      */
     public static Node.Nodes parse(ParserController pc, JspReader reader,
             Node parent, boolean isTagFile, boolean directivesOnly,
@@ -177,6 +182,13 @@ class Parser implements TagConstants {
 
     /**
      * Parse Attributes for a reader, provided for external use
+     *
+     * @param pc The parser
+     * @param reader The source
+     *
+     * @return The parsed attributes
+     *
+     * @throws JasperException If an error occurs during parsing
      */
     public static Attributes parseAttributes(ParserController pc,
             JspReader reader) throws JasperException {
@@ -198,6 +210,8 @@ class Parser implements TagConstants {
         String qName = parseName();
         if (qName == null)
             return false;
+
+        boolean ignoreEL = pageInfo.isELIgnored();
 
         // Determine prefix and local name components
         String localName = qName;
@@ -223,11 +237,14 @@ class Parser implements TagConstants {
             err.jspError(reader.mark(), "jsp.error.attribute.noquote");
 
         String watchString = "";
-        if (reader.matches("<%="))
+        if (reader.matches("<%=")) {
             watchString = "%>";
+            // Can't embed EL in a script expression
+            ignoreEL = true;
+        }
         watchString = watchString + quote;
 
-        String attrValue = parseAttributeValue(watchString);
+        String attrValue = parseAttributeValue(qName, watchString, ignoreEL);
         attrs.addAttribute(uri, localName, qName, "CDATA", attrValue);
         return true;
     }
@@ -235,7 +252,7 @@ class Parser implements TagConstants {
     /**
      * Name ::= (Letter | '_' | ':') (Letter | Digit | '.' | '_' | '-' | ':')*
      */
-    private String parseName() throws JasperException {
+    private String parseName() {
         char ch = (char) reader.peekChar();
         if (Character.isLetter(ch) || ch == '_' || ch == ':') {
             StringBuilder buf = new StringBuilder();
@@ -258,11 +275,14 @@ class Parser implements TagConstants {
      * RTAttributeValueDouble ::= ((QuotedChar - '"')* - ((QuotedChar-'"')'%>"')
      * ('%>"' | TRANSLATION_ERROR)
      */
-    private String parseAttributeValue(String watch) throws JasperException {
+    private String parseAttributeValue(String qName, String watch, boolean ignoreEL) throws JasperException {
+        boolean quoteAttributeEL = ctxt.getOptions().getQuoteAttributeEL();
         Mark start = reader.mark();
-        Mark stop = reader.skipUntilIgnoreEsc(watch);
+        // In terms of finding the end of the value, quoting EL is equivalent to
+        // ignoring it.
+        Mark stop = reader.skipUntilIgnoreEsc(watch, ignoreEL || quoteAttributeEL);
         if (stop == null) {
-            err.jspError(start, "jsp.error.attribute.unterminated", watch);
+            err.jspError(start, "jsp.error.attribute.unterminated", qName);
         }
 
         String ret = null;
@@ -276,7 +296,9 @@ class Parser implements TagConstants {
 
             ret = AttributeParser.getUnquoted(reader.getText(start, stop),
                     quote, isElIgnored,
-                    pageInfo.isDeferredSyntaxAllowedAsLiteral());
+                    pageInfo.isDeferredSyntaxAllowedAsLiteral(),
+                    ctxt.getOptions().getStrictQuoteEscaping(),
+                    quoteAttributeEL);
         } catch (IllegalArgumentException iae) {
             err.jspError(start, iae.getMessage());
         }
@@ -364,9 +386,7 @@ class Parser implements TagConstants {
      */
     private void addInclude(Node parent, Collection<String> files) throws JasperException {
         if (files != null) {
-            Iterator<String> iter = files.iterator();
-            while (iter.hasNext()) {
-                String file = iter.next();
+            for (String file : files) {
                 AttributesImpl attrs = new AttributesImpl();
                 attrs.addAttribute("", "file", "file", "CDATA", file);
 
@@ -736,46 +756,20 @@ class Parser implements TagConstants {
     }
 
     /*
-     * ELExpressionBody. Starts with "#{" or "${".  Ends with "}".May contain
-     *                   quoted "{", "}", '{', or '}' and nested "{...}"
+     * ELExpressionBody. Starts with "#{" or "${".  Ends with "}".
+     * See JspReader.skipELExpression().
      */
     private void parseELExpression(Node parent, char type)
             throws JasperException {
         start = reader.mark();
-        Mark last = null;
-        boolean singleQuoted = false;
-        boolean doubleQuoted = false;
-        int nesting = 0;
-        int currentChar;
-        do {
-            // XXX could move this logic to JspReader
-            last = reader.mark(); // XXX somewhat wasteful
-            currentChar = reader.nextChar();
-            if (currentChar == '\\' && (singleQuoted || doubleQuoted)) {
-                // skip character following '\' within quotes
-                reader.nextChar();
-                currentChar = reader.nextChar();
-            }
-            if (currentChar == -1)
-                err.jspError(start, "jsp.error.unterminated", type + "{");
-            if (currentChar == '"' && !singleQuoted) {
-                doubleQuoted = !doubleQuoted;
-            } else if (currentChar == '\'' && !doubleQuoted) {
-                singleQuoted = !singleQuoted;
-            } else if (currentChar == '{' && !doubleQuoted && !singleQuoted) {
-                nesting++;
-            } else if (currentChar =='}' && !doubleQuoted && !singleQuoted) {
-                // Note: This also matches the terminating '}' at which point
-                //       nesting will be set to -1 - hence the test for
-                //       while (currentChar != '}' || nesting > -1 ||...) below
-                //       to continue the loop until the final '}' is detected
-                nesting--;
-            }
-        } while (currentChar != '}' || singleQuoted || doubleQuoted || nesting > -1);
+        Mark last = reader.skipELExpression();
+        if (last == null) {
+            err.jspError(start, "jsp.error.unterminated", type + "{");
+        }
 
         @SuppressWarnings("unused")
-        Node unused = new Node.ELExpression(
-                type, reader.getText(start, last), start, parent);
+        Node unused = new Node.ELExpression(type, reader.getText(start, last),
+                start, parent);
     }
 
     /*
@@ -1302,55 +1296,56 @@ class Parser implements TagConstants {
     /*
      * Parse for a template text string until '<' or "${" or "#{" is encountered,
      * recognizing escape sequences "<\%", "\$", and "\#".
+     *
+     * Note: JSP uses '\$' as an escape for '$' and '\#' for '#' whereas EL uses
+     *       '\${' for '${' and '\#{' for '#{'. We are processing JSP template
+     *       test here so the JSP escapes apply.
      */
-    private void parseTemplateText(Node parent) throws JasperException {
+    private void parseTemplateText(Node parent) {
 
         if (!reader.hasMoreInput())
             return;
 
         CharArrayWriter ttext = new CharArrayWriter();
-        // Output the first character
+
         int ch = reader.nextChar();
-        if (ch == '\\') {
-            reader.pushChar();
-        } else {
-            ttext.write(ch);
+        while (ch != -1) {
+            if (ch == '<') {
+                // Check for "<\%"
+                if (reader.peekChar(0) == '\\' && reader.peekChar(1) == '%') {
+                    ttext.write(ch);
+                    // Swallow the \
+                    reader.nextChar();
+                    ttext.write(reader.nextChar());
+                } else {
+                    if (ttext.size() == 0) {
+                        ttext.write(ch);
+                    } else {
+                        reader.pushChar();
+                        break;
+                    }
+                }
+            } else if (ch == '\\' && !pageInfo.isELIgnored()) {
+                int next = reader.peekChar(0);
+                if (next == '$' || next == '#') {
+                    ttext.write(reader.nextChar());
+                } else {
+                    ttext.write(ch);
+                }
+            } else if ((ch == '$' || ch == '#' && !pageInfo.isDeferredSyntaxAllowedAsLiteral()) &&
+                    !pageInfo.isELIgnored()) {
+                if (reader.peekChar(0) == '{') {
+                    reader.pushChar();
+                    break;
+                } else {
+                    ttext.write(ch);
+                }
+            } else {
+                ttext.write(ch);
+            }
+            ch = reader.nextChar();
         }
 
-        while (reader.hasMoreInput()) {
-            int prev = ch;
-            ch = reader.nextChar();
-            if (ch == '<') {
-                reader.pushChar();
-                break;
-            } else if ((ch == '$' || ch == '#') && !pageInfo.isELIgnored()) {
-                if (!reader.hasMoreInput()) {
-                    ttext.write(ch);
-                    break;
-                }
-                if (reader.nextChar() == '{') {
-                    reader.pushChar();
-                    reader.pushChar();
-                    break;
-                }
-                ttext.write(ch);
-                reader.pushChar();
-                continue;
-            } else if (ch == '\\') {
-                if (!reader.hasMoreInput()) {
-                    ttext.write('\\');
-                    break;
-                }
-                char next = (char) reader.peekChar();
-                // Looking for \% or \$ or \#
-                if ((prev == '<' && next == '%') ||
-                        ((next == '$' || next == '#') &&
-                                !pageInfo.isELIgnored())) {
-                    ch = reader.nextChar();
-                }
-            }
-            ttext.write(ch);
-        }
         @SuppressWarnings("unused")
         Node unused = new Node.TemplateText(ttext.toString(), start, parent);
     }
@@ -1368,8 +1363,8 @@ class Parser implements TagConstants {
                         "&lt;jsp:text&gt;");
             }
             CharArrayWriter ttext = new CharArrayWriter();
-            while (reader.hasMoreInput()) {
-                int ch = reader.nextChar();
+            int ch = reader.nextChar();
+            while (ch != -1) {
                 if (ch == '<') {
                     // Check for <![CDATA[
                     if (!reader.matches("![CDATA[")) {
@@ -1383,39 +1378,34 @@ class Parser implements TagConstants {
                     String text = reader.getText(start, stop);
                     ttext.write(text, 0, text.length());
                 } else if (ch == '\\') {
-                    if (!reader.hasMoreInput()) {
-                        ttext.write('\\');
-                        break;
-                    }
-                    ch = reader.nextChar();
-                    if (ch != '$' && ch != '#') {
+                    int next = reader.peekChar(0);
+                    if (next == '$' || next =='#') {
+                        ttext.write(reader.nextChar());
+                    } else {
                         ttext.write('\\');
                     }
-                    ttext.write(ch);
                 } else if (ch == '$' || ch == '#') {
-                    if (!reader.hasMoreInput()) {
-                        ttext.write(ch);
-                        break;
-                    }
-                    if (reader.nextChar() != '{') {
-                        ttext.write(ch);
-                        reader.pushChar();
-                        continue;
-                    }
-                    // Create a template text node
-                    @SuppressWarnings("unused")
-                    Node unused = new Node.TemplateText(
-                            ttext.toString(), start, parent);
+                    if (reader.peekChar(0) == '{') {
+                        // Swallow the '{'
+                        reader.nextChar();
 
-                    // Mark and parse the EL expression and create its node:
-                    start = reader.mark();
-                    parseELExpression(parent, (char) ch);
+                        // Create a template text node
+                        @SuppressWarnings("unused")
+                        Node unused = new Node.TemplateText(
+                                ttext.toString(), start, parent);
 
-                    start = reader.mark();
-                    ttext.reset();
+                        // Mark and parse the EL expression and create its node:
+                        parseELExpression(parent, (char) ch);
+
+                        start = reader.mark();
+                        ttext.reset();
+                    } else {
+                        ttext.write(ch);
+                    }
                 } else {
                     ttext.write(ch);
                 }
+                ch = reader.nextChar();
             }
 
             @SuppressWarnings("unused")
@@ -1797,7 +1787,6 @@ class Parser implements TagConstants {
     }
 
     private void parseFileDirectives(Node parent) throws JasperException {
-        reader.setSingleFile(true);
         reader.skipUntil("<");
         while (reader.hasMoreInput()) {
             start = reader.mark();

@@ -131,17 +131,12 @@ public class MapDemo implements ChannelListener, MembershipListener{
                            ChannelCreator.usage());
     }
 
-    /**
-     * Main method
-     * @param args
-     * @throws Exception
-     */
     @SuppressWarnings("unused")
     public static void main(String[] args) throws Exception {
         long start = System.currentTimeMillis();
         //create a channel object
         ManagedChannel channel = (ManagedChannel) ChannelCreator.createChannel(args);
-        //define a map name, unless one is defined as a paramters
+        //define a map name, unless one is defined as a parameters
         String mapName = "MapDemo";
         if ( args.length > 0 && (!args[args.length-1].startsWith("-"))) {
             mapName = args[args.length-1];
@@ -416,7 +411,7 @@ public class MapDemo implements ChannelListener, MembershipListener{
             dataModel.getValueAt(-1,-1);
         }
 
-        public static Random random = new Random();
+        public static final Random random = new Random();
         public static String random(int count, int start, int end, boolean letters, boolean numbers,
                                     char[] chars ) {
             if (count == 0) {
@@ -494,7 +489,7 @@ public class MapDemo implements ChannelListener, MembershipListener{
             System.out.println("--------------------------");
         }
 
-        /**
+        /*
          * Create the GUI and show it.  For thread safety,
          * this method should be invoked from the
          * event-dispatching thread.

@@ -39,9 +39,8 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public abstract class PojoEndpointBase extends Endpoint {
 
-    private static final Log log = LogFactory.getLog(PojoEndpointBase.class);
-    private static final StringManager sm =
-            StringManager.getManager(Constants.PACKAGE_NAME);
+    private final Log log = LogFactory.getLog(PojoEndpointBase.class); // must not be static
+    private static final StringManager sm = StringManager.getManager(PojoEndpointBase.class);
 
     private Object pojo;
     private Map<String,String> pathParameters;
@@ -73,14 +72,11 @@ public abstract class PojoEndpointBase extends Endpoint {
                         "pojoEndpointBase.onOpenFail",
                         pojo.getClass().getName()), e);
                 handleOnOpenOrCloseError(session, e);
-                return;
             } catch (InvocationTargetException e) {
                 Throwable cause = e.getCause();
                 handleOnOpenOrCloseError(session, cause);
-                return;
             } catch (Throwable t) {
                 handleOnOpenOrCloseError(session, t);
-                return;
             }
         }
     }

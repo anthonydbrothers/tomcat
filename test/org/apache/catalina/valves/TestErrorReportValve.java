@@ -16,12 +16,13 @@
  */
 package org.apache.catalina.valves;
 
-import java.io.File;
 import java.io.IOException;
 
 import javax.servlet.AsyncContext;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -34,6 +35,7 @@ import org.apache.catalina.Wrapper;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.descriptor.web.ErrorPage;
 
 public class TestErrorReportValve extends TomcatBaseTest {
 
@@ -41,19 +43,18 @@ public class TestErrorReportValve extends TomcatBaseTest {
     public void testBug53071() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "errorServlet", new ErrorServlet());
-        ctx.addServletMapping("/", "errorServlet");
+        ctx.addServletMappingDecoded("/", "errorServlet");
 
         tomcat.start();
 
         ByteChunk res = getUrl("http://localhost:" + getPort());
 
-        Assert.assertTrue(res.toString().contains("<p><b>message</b> <u>" +
-                ErrorServlet.ERROR_TEXT + "</u></p>"));
+        Assert.assertTrue(res.toString().contains("<p><b>Message</b> " +
+                ErrorServlet.ERROR_TEXT + "</p>"));
     }
 
 
@@ -75,12 +76,11 @@ public class TestErrorReportValve extends TomcatBaseTest {
     public void testBug54220DoNotSetNotFound() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "bug54220", new Bug54220Servlet(false));
-        ctx.addServletMapping("/", "bug54220");
+        ctx.addServletMappingDecoded("/", "bug54220");
 
         tomcat.start();
 
@@ -96,12 +96,11 @@ public class TestErrorReportValve extends TomcatBaseTest {
     public void testBug54220SetNotFound() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "bug54220", new Bug54220Servlet(true));
-        ctx.addServletMapping("/", "bug54220");
+        ctx.addServletMappingDecoded("/", "bug54220");
 
         tomcat.start();
 
@@ -134,19 +133,18 @@ public class TestErrorReportValve extends TomcatBaseTest {
     }
 
 
-    /**
+    /*
      * Custom error/status codes should not result in a blank response.
      */
     @Test
     public void testBug54536() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        Context ctx =
-            tomcat.addContext("", System.getProperty("java.io.tmpdir"));
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "bug54536", new Bug54536Servlet());
-        ctx.addServletMapping("/", "bug54536");
+        ctx.addServletMappingDecoded("/", "bug54536");
 
         tomcat.start();
 
@@ -178,16 +176,14 @@ public class TestErrorReportValve extends TomcatBaseTest {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
 
-        // Must have a real docBase - just use temp
-        File docBase = new File(System.getProperty("java.io.tmpdir"));
-
-        Context ctx = tomcat.addContext("", docBase.getAbsolutePath());
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
 
         Bug56042Servlet bug56042Servlet = new Bug56042Servlet();
         Wrapper wrapper =
             Tomcat.addServlet(ctx, "bug56042Servlet", bug56042Servlet);
         wrapper.setAsyncSupported(true);
-        ctx.addServletMapping("/bug56042Servlet", "bug56042Servlet");
+        ctx.addServletMappingDecoded("/bug56042Servlet", "bug56042Servlet");
 
         tomcat.start();
 
@@ -218,4 +214,53 @@ public class TestErrorReportValve extends TomcatBaseTest {
             }
         }
     }
+
+    private static final class ExceptionServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+        @Override
+        public void service(ServletRequest request, ServletResponse response)
+                throws IOException {
+            throw new RuntimeException();
+        }
+    }
+
+
+    private static final class ErrorPageServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+        @Override
+        public void service(ServletRequest request, ServletResponse response)
+                throws IOException {
+            response.getWriter().print("OK");
+        }
+    }
+
+
+    @Test
+    public void testErrorPageServlet() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+
+        Tomcat.addServlet(ctx, "exception", new ExceptionServlet());
+        ctx.addServletMappingDecoded("/exception", "exception");
+        Tomcat.addServlet(ctx, "erropage", new ErrorPageServlet());
+        ctx.addServletMappingDecoded("/erropage", "erropage");
+        ErrorPage errorPage = new ErrorPage();
+        errorPage.setErrorCode(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        errorPage.setLocation("/erropage");
+        ctx.addErrorPage(errorPage);
+
+        tomcat.start();
+
+        ByteChunk res = new ByteChunk();
+        int rc = getUrl("http://localhost:" + getPort() + "/exception", res, null);
+
+        Assert.assertEquals(res.toString(), "OK");
+        Assert.assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
+    }
+
+
 }

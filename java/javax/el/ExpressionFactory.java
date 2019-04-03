@@ -34,7 +34,6 @@ import java.security.PrivilegedAction;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -53,38 +52,26 @@ public abstract class ExpressionFactory {
 
     private static final String PROPERTY_NAME = "javax.el.ExpressionFactory";
 
-    private static final String SEP;
     private static final String PROPERTY_FILE;
 
     private static final CacheValue nullTcclFactory = new CacheValue();
-    private static final ConcurrentMap<CacheKey, CacheValue> factoryCache =
-            new ConcurrentHashMap<>();
+    private static final Map<CacheKey, CacheValue> factoryCache = new ConcurrentHashMap<>();
 
     static {
         if (IS_SECURITY_ENABLED) {
-            SEP = AccessController.doPrivileged(
-                    new PrivilegedAction<String>(){
-                        @Override
-                        public String run() {
-                            return System.getProperty("file.separator");
-                        }
-
-                    }
-            );
             PROPERTY_FILE = AccessController.doPrivileged(
                     new PrivilegedAction<String>(){
                         @Override
                         public String run() {
-                            return System.getProperty("java.home") + SEP +
-                                    "lib" + SEP + "el.properties";
+                            return System.getProperty("java.home") + File.separator +
+                                    "lib" + File.separator + "el.properties";
                         }
 
                     }
             );
         } else {
-            SEP = System.getProperty("file.separator");
-            PROPERTY_FILE = System.getProperty("java.home") + SEP + "lib" +
-                    SEP + "el.properties";
+            PROPERTY_FILE = System.getProperty("java.home") + File.separator + "lib" +
+                    File.separator + "el.properties";
         }
     }
 
@@ -114,7 +101,7 @@ public abstract class ExpressionFactory {
     public static ExpressionFactory newInstance(Properties properties) {
         ExpressionFactory result = null;
 
-        ClassLoader tccl = Thread.currentThread().getContextClassLoader();
+        ClassLoader tccl = Util.getContextClassLoader();
 
         CacheValue cacheValue;
         Class<?> clazz;
@@ -162,9 +149,7 @@ public abstract class ExpressionFactory {
                     writeLock.unlock();
                 }
             } catch (ClassNotFoundException e) {
-                throw new ELException(
-                    "Unable to find ExpressionFactory of type: " + className,
-                    e);
+                throw new ELException(Util.message(null, "expressionFactory.cannotFind", className), e);
             }
         }
 
@@ -182,28 +167,33 @@ public abstract class ExpressionFactory {
                 }
             }
             if (constructor == null) {
-                result = (ExpressionFactory) clazz.newInstance();
+                result = (ExpressionFactory) clazz.getConstructor().newInstance();
             } else {
                 result =
                     (ExpressionFactory) constructor.newInstance(properties);
             }
 
-        } catch (InstantiationException | IllegalAccessException | IllegalArgumentException e) {
-            throw new ELException(
-                    "Unable to create ExpressionFactory of type: " + clazz.getName(),
-                    e);
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
             Util.handleThrowable(cause);
-            throw new ELException(
-                    "Unable to create ExpressionFactory of type: " + clazz.getName(),
-                    e);
+            throw new ELException(Util.message(null, "expressionFactory.cannotCreate", clazz.getName()), e);
+        } catch (ReflectiveOperationException | IllegalArgumentException e) {
+            throw new ELException(Util.message(null, "expressionFactory.cannotCreate", clazz.getName()), e);
         }
 
         return result;
     }
 
     /**
+     * Create a new value expression.
+     *
+     * @param context      The EL context for this evaluation
+     * @param expression   The String representation of the value expression
+     * @param expectedType The expected type of the result of evaluating the
+     *                     expression
+     *
+     * @return A new value expression formed from the input parameters
+     *
      * @throws NullPointerException
      *              If the expected type is <code>null</code>
      * @throws ELException
@@ -216,6 +206,17 @@ public abstract class ExpressionFactory {
             Class<?> expectedType);
 
     /**
+     * Create a new method expression instance.
+     *
+     * @param context            The EL context for this evaluation
+     * @param expression         The String representation of the method
+     *                           expression
+     * @param expectedReturnType The expected type of the result of invoking the
+     *                           method
+     * @param expectedParamTypes The expected types of the input parameters
+     *
+     * @return A new method expression formed from the input parameters.
+     *
      * @throws NullPointerException
      *              If the expected parameters types are <code>null</code>
      * @throws ELException
@@ -226,12 +227,21 @@ public abstract class ExpressionFactory {
             Class<?>[] expectedParamTypes);
 
     /**
+     * Coerce the supplied object to the requested type.
+     *
+     * @param obj          The object to be coerced
+     * @param expectedType The type to which the object should be coerced
+     *
+     * @return An instance of the requested type.
+     *
      * @throws ELException
      *              If the conversion fails
      */
     public abstract Object coerceToType(Object obj, Class<?> expectedType);
 
     /**
+     * @return This default implementation returns null
+     *
      * @since EL 3.0
      */
     public ELResolver getStreamELResolver() {
@@ -239,6 +249,8 @@ public abstract class ExpressionFactory {
     }
 
     /**
+     * @return This default implementation returns null
+     *
      * @since EL 3.0
      */
     public Map<String,Method> getInitFunctionMap() {
@@ -305,7 +317,7 @@ public abstract class ExpressionFactory {
         }
 
         public void setFactoryClass(Class<?> clazz) {
-            ref = new WeakReference<Class<?>>(clazz);
+            ref = new WeakReference<>(clazz);
         }
     }
 
@@ -379,8 +391,7 @@ public abstract class ExpressionFactory {
                 // Should never happen with UTF-8
                 // If it does - ignore & return null
             } catch (IOException e) {
-                throw new ELException("Failed to read " + SERVICE_RESOURCE_NAME,
-                        e);
+                throw new ELException(Util.message(null, "expressionFactory.readFailed", SERVICE_RESOURCE_NAME), e);
             } finally {
                 try {
                     is.close();
@@ -404,7 +415,7 @@ public abstract class ExpressionFactory {
             } catch (FileNotFoundException e) {
                 // Should not happen - ignore it if it does
             } catch (IOException e) {
-                throw new ELException("Failed to read " + PROPERTY_FILE, e);
+                throw new ELException(Util.message(null, "expressionFactory.readFailed", PROPERTY_FILE), e);
             }
         }
         return null;

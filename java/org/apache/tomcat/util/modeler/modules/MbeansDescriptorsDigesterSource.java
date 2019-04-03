@@ -21,7 +21,6 @@ package org.apache.tomcat.util.modeler.modules;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 import javax.management.ObjectName;
@@ -36,10 +35,11 @@ public class MbeansDescriptorsDigesterSource extends ModelerSource
 {
     private static final Log log =
             LogFactory.getLog(MbeansDescriptorsDigesterSource.class);
+    private static final Object dLock = new Object();
 
     private Registry registry;
     private final List<ObjectName> mbeans = new ArrayList<>();
-    private static volatile Digester digester = null;
+    private static Digester digester = null;
 
     private static Digester createDigester() {
 
@@ -156,12 +156,11 @@ public class MbeansDescriptorsDigesterSource extends ModelerSource
 
         InputStream stream = (InputStream) source;
 
-        if (digester == null) {
-            digester = createDigester();
-        }
-        ArrayList<ManagedBean> loadedMbeans = new ArrayList<>();
-
-        synchronized (digester) {
+        List<ManagedBean> loadedMbeans = new ArrayList<>();
+        synchronized(dLock) {
+            if (digester == null) {
+                digester = createDigester();
+            }
 
             // Process the input file to configure our registry
             try {
@@ -169,16 +168,15 @@ public class MbeansDescriptorsDigesterSource extends ModelerSource
                 digester.push(loadedMbeans);
                 digester.parse(stream);
             } catch (Exception e) {
-                log.error("Error digesting Registry data", e);
+                log.error(sm.getString("modules.digesterParseError"), e);
                 throw e;
             } finally {
                 digester.reset();
             }
 
         }
-        Iterator<ManagedBean> iter = loadedMbeans.iterator();
-        while (iter.hasNext()) {
-            registry.addManagedBean(iter.next());
+        for (ManagedBean loadedMbean : loadedMbeans) {
+            registry.addManagedBean(loadedMbean);
         }
     }
 }

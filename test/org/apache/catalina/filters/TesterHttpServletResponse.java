@@ -22,8 +22,11 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletResponse;
@@ -131,13 +134,14 @@ public class TesterHttpServletResponse implements HttpServletResponse {
     public void setError() {/* NOOP */}
     public boolean isError() { return false; }
     /**
-     * @throws IOException
+     * @return Always null
+     * @throws IOException Never happens
      */
     public ServletOutputStream createOutputStream() throws IOException {
         return null;
     }
     /**
-     * @throws IOException
+     * @throws IOException Never happens
      */
     public void finishResponse() throws IOException {/* NOOP */}
     public int getContentLength() { return -1; }
@@ -146,24 +150,24 @@ public class TesterHttpServletResponse implements HttpServletResponse {
     public PrintWriter getReporter() { return null; }
     public void recycle() {/* NOOP */}
     /**
-     * @param b
-     * @throws IOException
+     * @param b Unused
+     * @throws IOException Never happens
      */
     public void write(int b) throws IOException {
         // NOOP
     }
     /**
-     * @param b
-     * @throws IOException
+     * @param b Unused
+     * @throws IOException Never happens
      */
     public void write(byte b[]) throws IOException {
         // NOOP
     }
     /**
-     * @param b
-     * @param off
-     * @param len
-     * @throws IOException
+     * @param b   Unused
+     * @param off Unused
+     * @param len Unused
+     * @throws IOException Never happens
      */
     public void write(byte b[], int off, int len) throws IOException {
         // NOOP
@@ -199,7 +203,7 @@ public class TesterHttpServletResponse implements HttpServletResponse {
     @Override
     public Collection<String> getHeaderNames() { return null; }
     @Override
-    public Collection<String> getHeaders(String name) { return null; }
+    public Collection<String> getHeaders(String name) { return Collections.emptyList(); }
     public String getMessage() { return null; }
     public void reset(@SuppressWarnings("unused") int status,
             @SuppressWarnings("unused") String message) {/* NOOP */}
@@ -213,19 +217,19 @@ public class TesterHttpServletResponse implements HttpServletResponse {
     public boolean containsHeader(String name) { return false; }
     @Override
     public String encodeRedirectURL(String url) { return null; }
-    /** @deprecated */
+    /** @deprecated Do not use */
     @Override
     @Deprecated
     public String encodeRedirectUrl(String url) { return null; }
     @Override
     public String encodeURL(String url) { return null; }
-    /** @deprecated */
+    /** @deprecated Do not use */
     @Override
     @Deprecated
     public String encodeUrl(String url) { return null; }
     /**
      *
-     * @throws IOException
+     * @throws IOException Never happens
      */
     public void sendAcknowledgement() throws IOException {/* NOOP */}
     @Override
@@ -240,10 +244,14 @@ public class TesterHttpServletResponse implements HttpServletResponse {
     public void setDateHeader(String name, long value) {/* NOOP */}
     @Override
     public void setIntHeader(String name, int value) {/* NOOP */}
-    /** @deprecated */
+    /** @deprecated Do not use */
     @Override
     @Deprecated
     public void setStatus(int status, String message) {/* NOOP */}
     @Override
     public void setContentLengthLong(long length) {/* NOOP */}
+    @Override
+    public void setTrailerFields(Supplier<Map<String, String>> supplier) { /* NOOP */ }
+    @Override
+    public Supplier<Map<String, String>> getTrailerFields() { return null; }
 }
